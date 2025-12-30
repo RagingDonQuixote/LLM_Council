@@ -188,15 +188,55 @@ export const api = {
   },
 
   /**
-   * Submit human chairman feedback.
+   * Submit human chairman feedback and receive streaming updates.
    */
-  async submitHumanFeedback(conversationId, feedback, continueDiscussion) {
+  async submitHumanFeedbackStream(conversationId, feedback, onEvent) {
     const response = await fetch(`${API_BASE}/api/conversations/${conversationId}/human-feedback`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ feedback, continue_discussion: continueDiscussion }),
+      body: JSON.stringify({ feedback, continue_discussion: true }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to submit feedback stream');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value);
+      const lines = chunk.split('\n');
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6);
+          try {
+            const event = JSON.parse(data);
+            onEvent(event.type, event);
+          } catch (e) {
+            console.error('Failed to parse SSE event:', e);
+          }
+        }
+      }
+    }
+  },
+
+  /**
+   * Submit human chairman feedback (non-streaming for end session).
+   */
+  async submitHumanFeedback(conversationId, feedback) {
+    const response = await fetch(`${API_BASE}/api/conversations/${conversationId}/human-feedback`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ feedback, continue_discussion: false }),
     });
     if (!response.ok) {
       throw new Error('Failed to submit feedback');

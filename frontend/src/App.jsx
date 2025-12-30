@@ -116,25 +116,120 @@ function App() {
     if (!currentConversationId) return;
 
     setIsLoading(true);
-    try {
-      const result = await api.submitHumanFeedback(currentConversationId, humanFeedback, continueDiscussion);
+    if (continueDiscussion) {
+      setShowTerminal(true);
+      setTerminalLogs(['Initiating Council stream with feedback...']);
+      
+      try {
+        // Optimistically add user message (the feedback)
+        const feedbackMsg = { role: 'user', content: `Human Chairman Feedback: ${humanFeedback}` };
+        
+        // Add assistant placeholder for the new round
+        const assistantMessage = {
+          role: 'assistant',
+          stage1: null,
+          stage2: null,
+          stage3: null,
+          metadata: null,
+          loading: { stage1: false, stage2: false, stage3: false }
+        };
 
-      if (result.continued) {
-        // Reload conversation to show new stages
-        loadConversation(currentConversationId);
-        // Reset for potential next iteration
+        setCurrentConversation((prev) => ({
+          ...prev,
+          messages: [...prev.messages, feedbackMsg, assistantMessage],
+        }));
+
+        await api.submitHumanFeedbackStream(currentConversationId, humanFeedback, (eventType, event) => {
+          switch (eventType) {
+            case 'log':
+              setTerminalLogs(prev => [...prev, event.message]);
+              break;
+            case 'stage1_start':
+              setCurrentConversation((prev) => {
+                const messages = [...prev.messages];
+                const lastMsg = messages[messages.length - 1];
+                lastMsg.loading.stage1 = true;
+                return { ...prev, messages };
+              });
+              break;
+            case 'stage1_complete':
+              setCurrentConversation((prev) => {
+                const messages = [...prev.messages];
+                const lastMsg = messages[messages.length - 1];
+                lastMsg.stage1 = event.data;
+                lastMsg.loading.stage1 = false;
+                return { ...prev, messages };
+              });
+              break;
+            case 'stage2_start':
+              setCurrentConversation((prev) => {
+                const messages = [...prev.messages];
+                const lastMsg = messages[messages.length - 1];
+                lastMsg.loading.stage2 = true;
+                return { ...prev, messages };
+              });
+              break;
+            case 'stage2_complete':
+              setCurrentConversation((prev) => {
+                const messages = [...prev.messages];
+                const lastMsg = messages[messages.length - 1];
+                lastMsg.stage2 = event.data;
+                lastMsg.metadata = event.metadata;
+                lastMsg.loading.stage2 = false;
+                return { ...prev, messages };
+              });
+              break;
+            case 'stage3_start':
+              setCurrentConversation((prev) => {
+                const messages = [...prev.messages];
+                const lastMsg = messages[messages.length - 1];
+                lastMsg.loading.stage3 = true;
+                return { ...prev, messages };
+              });
+              break;
+            case 'stage3_complete':
+              setCurrentConversation((prev) => {
+                const messages = [...prev.messages];
+                const lastMsg = messages[messages.length - 1];
+                lastMsg.stage3 = event.data;
+                lastMsg.loading.stage3 = false;
+                return { ...prev, messages };
+              });
+              break;
+            case 'human_input_required':
+              setShowStage4(true);
+              setIsLoading(false);
+              break;
+            case 'complete':
+              setTerminalLogs(prev => [...prev, '--- REVISION COMPLETE ---']);
+              loadConversations();
+              setIsLoading(false);
+              break;
+            case 'error':
+              console.error('Stream error:', event.message);
+              setTerminalLogs(prev => [...prev, `ERROR: ${event.message}`]);
+              setIsLoading(false);
+              break;
+          }
+        });
+
         setShowStage4(false);
         setHumanFeedback('');
-      } else {
-        // End session
+      } catch (error) {
+        console.error('Failed to submit feedback stream:', error);
+        setIsLoading(false);
+      }
+    } else {
+      try {
+        await api.submitHumanFeedback(currentConversationId, humanFeedback);
         handleEndSession();
         setShowStage4(false);
         setHumanFeedback('');
+      } catch (error) {
+        console.error('Failed to submit feedback:', error);
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error('Failed to submit feedback:', error);
-    } finally {
-      setIsLoading(false);
     }
   };
 

@@ -209,7 +209,7 @@ def add_human_feedback(conversation_id: str, feedback: str, continue_discussion:
 
     conversation["messages"].append({
         "role": "human_chairman",
-        "feedback": feedback,
+        "content": feedback,
         "continue_discussion": continue_discussion
     })
 

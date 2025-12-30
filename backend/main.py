@@ -182,15 +182,17 @@ async def submit_human_feedback(conversation_id: str, request: HumanFeedbackRequ
     last_user_message = None
     # We need to find the last message that was NOT feedback to keep context
     for msg in reversed(conversation["messages"]):
-        if msg["role"] == "user" and "Human Chairman Feedback:" not in msg["content"]:
-            last_user_message = msg["content"]
-            break
-
+        if msg.get("role") == "user":
+            content = msg.get("content", "")
+            if "Human Chairman Feedback:" not in content:
+                last_user_message = content
+                break
+    
     if not last_user_message:
-        # Fallback to the very last user message if no original found
+        # Fallback to any user message
         for msg in reversed(conversation["messages"]):
-            if msg["role"] == "user":
-                last_user_message = msg["content"]
+            if msg.get("role") == "user":
+                last_user_message = msg.get("content", "")
                 break
 
     if not last_user_message:
@@ -202,10 +204,11 @@ async def submit_human_feedback(conversation_id: str, request: HumanFeedbackRequ
         print(f"[FEEDBACK] Starting event generator for {conversation_id}")
         logs_to_send = []
         def sync_log(msg):
-            print(f"[COUNCIL] {msg}")
+            print(f"[COUNCIL-LOG] {msg}")
             logs_to_send.append(msg)
 
         try:
+            print(f"[FEEDBACK] modified_query prepared: {modified_query[:100]}...")
             # Stage 0: Analysis & Planning for the feedback
             msg = "🔄 Analyzing Human Feedback Strategy..."
             print(f"\n{'='*50}\n[STRATEGY] {msg}\n{'='*50}")
