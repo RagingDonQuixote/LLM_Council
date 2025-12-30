@@ -262,15 +262,18 @@ Review the member responses and evaluations.
 
 Your task is to decide:
 1. Is the current goal met? (e.g., if a consensus was required, have they agreed?)
-2. If YES, synthesize the final high-quality answer.
-3. If NO, create a 'Consensus Proposal' or a specific follow-up instruction to resolve the disagreement/lack of parameters.
+2. Is the user's ORIGINAL request completely fulfilled? (e.g., if the user asked for a poem after the consensus, is the poem there?)
+3. If BOTH are YES, synthesize the final high-quality answer.
+4. If NO to either, create a 'Consensus Proposal' or a specific follow-up instruction to resolve the disagreement OR move to the next part of the task.
+
+IMPORTANT: Do not finalize (FINAL_ANSWER) if a multi-step task is only partially complete. If the council has agreed on parameters (like 5 words) but hasn't performed the main task (like writing the poem), set action to 'CONTINUE_NEGOTIATION' and instruct them to perform the main task using the agreed parameters.
 
 Your output must be a JSON object:
 {
   "action": "FINAL_ANSWER" | "CONTINUE_NEGOTIATION",
   "content": "The synthesized final answer OR the new instruction/proposal for the council",
-  "reasoning": "Why are you taking this action?",
-  "new_instruction": "If CONTINUE_NEGOTIATION, what exactly should the models do next? (e.g. 'We will use these 5 words: A, B, C, D, E. Now write the poem.')"
+  "reasoning": "Why are you taking this action? Explain if the goal is met and if the user's full request is addressed.",
+  "new_instruction": "If CONTINUE_NEGOTIATION, what exactly should the models do next? (e.g. 'We have agreed on these 5 words: A, B, C, D, E. Now, each member must write the erotic love poem as requested.')"
 }
 """
 

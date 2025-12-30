@@ -167,6 +167,7 @@ async def test_model_latency(model_id: str):
 @app.post("/api/conversations/{conversation_id}/human-feedback")
 async def submit_human_feedback(conversation_id: str, request: HumanFeedbackRequest):
     """Submit human chairman feedback and potentially continue discussion."""
+    print(f"[FEEDBACK] Received for {conversation_id}: {request.feedback}")
     conversation = storage.get_conversation(conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -179,10 +180,18 @@ async def submit_human_feedback(conversation_id: str, request: HumanFeedbackRequ
 
     # Rerun council with feedback incorporated
     last_user_message = None
+    # We need to find the last message that was NOT feedback to keep context
     for msg in reversed(conversation["messages"]):
-        if msg["role"] == "user":
+        if msg["role"] == "user" and "Human Chairman Feedback:" not in msg["content"]:
             last_user_message = msg["content"]
             break
+
+    if not last_user_message:
+        # Fallback to the very last user message if no original found
+        for msg in reversed(conversation["messages"]):
+            if msg["role"] == "user":
+                last_user_message = msg["content"]
+                break
 
     if not last_user_message:
         raise HTTPException(status_code=400, detail="No user message found to provide feedback on")
@@ -190,6 +199,7 @@ async def submit_human_feedback(conversation_id: str, request: HumanFeedbackRequ
     modified_query = f"{last_user_message}\n\nHuman Chairman Feedback: {request.feedback}\n\nPlease reconsider your analysis taking this feedback into account."
 
     async def event_generator():
+        print(f"[FEEDBACK] Starting event generator for {conversation_id}")
         logs_to_send = []
         def sync_log(msg):
             print(f"[COUNCIL] {msg}")
