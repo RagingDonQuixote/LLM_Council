@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { api } from '../api';
 import './Settings.css';
 
-function Settings({ onClose }) {
+function Settings({ onClose, versionInfo }) {
   const [config, setConfig] = useState(null);
   const [availableModels, setAvailableModels] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -222,7 +222,7 @@ function Settings({ onClose }) {
     <div className="settings" onMouseDown={handleMouseDown}>
       <div ref={modalRef} style={modalStyle}>
         <div className="settings-header" ref={headerRef}>
-          <h2>LLM Council Settings</h2>
+          <h2>{versionInfo?.printname || 'LLM Council'} Settings</h2>
           <button onClick={onClose} className="close-button">×</button>
         </div>
 

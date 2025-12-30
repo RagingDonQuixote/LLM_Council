@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatInterface from './components/ChatInterface';
 import Settings from './components/Settings';
+import RetroTerminal from './components/RetroTerminal';
 import { api } from './api';
 import './App.css';
 
@@ -14,6 +15,8 @@ function App() {
   const [versionInfo, setVersionInfo] = useState({ printname: 'LLM Council', version: '' });
   const [showSettings, setShowSettings] = useState(false);
   const [showStage4, setShowStage4] = useState(false);
+  const [showTerminal, setShowTerminal] = useState(false);
+  const [terminalLogs, setTerminalLogs] = useState([]);
   const [humanFeedback, setHumanFeedback] = useState('');
 
   // Load conversations on mount
@@ -161,6 +164,8 @@ function App() {
     if (!currentConversationId) return;
 
     setIsLoading(true);
+    setShowTerminal(true);
+    setTerminalLogs(['Initiating Council stream...']);
     try {
       // Optimistically add user message to UI
       const userMessage = { role: 'user', content };
@@ -194,6 +199,9 @@ function App() {
       // Send message with streaming
       await api.sendMessageStream(currentConversationId, content, (eventType, event) => {
         switch (eventType) {
+          case 'log':
+            setTerminalLogs(prev => [...prev, event.message]);
+            break;
           case 'stage1_start':
             setCurrentConversation((prev) => {
               const messages = [...prev.messages];
@@ -265,12 +273,14 @@ function App() {
 
           case 'complete':
             // Stream complete, reload conversations list
+            setTerminalLogs(prev => [...prev, '--- SESSION COMPLETE ---']);
             loadConversations();
             setIsLoading(false);
             break;
 
           case 'error':
             console.error('Stream error:', event.message);
+            setTerminalLogs(prev => [...prev, `ERROR: ${event.message}`]);
             setIsLoading(false);
             break;
 
@@ -313,8 +323,16 @@ function App() {
         onStage4Cancel={handleStage4Cancel}
         isLoadingStage4={isLoading}
       />
+      <RetroTerminal 
+        logs={terminalLogs} 
+        isVisible={showTerminal} 
+        onClose={() => setShowTerminal(false)} 
+      />
       {showSettings && (
-        <Settings onClose={handleCloseSettings} />
+        <Settings 
+          onClose={handleCloseSettings} 
+          versionInfo={versionInfo}
+        />
       )}
     </div>
   );

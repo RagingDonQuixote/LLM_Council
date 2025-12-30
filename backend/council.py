@@ -5,12 +5,13 @@ from .openrouter import query_models_parallel, query_model
 from . import config
 
 
-async def stage1_collect_responses(user_query: str) -> List[Dict[str, Any]]:
+async def stage1_collect_responses(user_query: str, log_callback=None) -> List[Dict[str, Any]]:
     """
     Stage 1: Collect individual responses from all council models.
 
     Args:
         user_query: The user's question
+        log_callback: Optional callback for logging events
 
     Returns:
         List of dicts with 'model' and 'response' keys
@@ -24,11 +25,25 @@ async def stage1_collect_responses(user_query: str) -> List[Dict[str, Any]]:
     tasks = []
     for model in council_models:
         personality = personalities.get(model, "Expert AI Assistant")
+        if log_callback:
+            log_callback(f"Preparing query for council member: {model.split('/')[-1]}")
         messages = [
             {"role": "system", "content": f"You are a council member with the following personality: {personality}"},
             {"role": "user", "content": user_query}
         ]
-        tasks.append(query_model(model, messages, timeout=float(timeout)))
+        
+        async def query_with_logging(m, msgs, t):
+            if log_callback:
+                log_callback(f"Waiting for response from: {m.split('/')[-1]}...")
+            res = await query_model(m, msgs, timeout=float(t))
+            if log_callback:
+                if res:
+                    log_callback(f"SUCCESS: {m.split('/')[-1]} has responded.")
+                else:
+                    log_callback(f"FAILED: {m.split('/')[-1]} timed out or error.")
+            return res
+            
+        tasks.append(query_with_logging(model, messages, timeout))
 
     # Query all models in parallel
     import asyncio
@@ -58,7 +73,8 @@ async def stage1_collect_responses(user_query: str) -> List[Dict[str, Any]]:
 
 async def stage2_collect_rankings(
     user_query: str,
-    stage1_results: List[Dict[str, Any]]
+    stage1_results: List[Dict[str, Any]],
+    log_callback=None
 ) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
     """
     Stage 2: Each model ranks the anonymized responses.
@@ -66,6 +82,7 @@ async def stage2_collect_rankings(
     Args:
         user_query: The original user query
         stage1_results: Results from Stage 1
+        log_callback: Optional callback for logging events
 
     Returns:
         Tuple of (rankings list, label_to_model mapping)
@@ -98,38 +115,38 @@ Your task:
 2. Then, at the very end of your response, provide a final ranking of ALL {len(stage1_results)} responses.
 
 IMPORTANT: Your final ranking MUST be formatted EXACTLY as follows:
-- Start with the line "FINAL RANKING:" (all caps, with colon)
-- Then list the responses from best to worst as a numbered list
-- Each line should be: number, period, space, then ONLY the response label (e.g., "1. Response A")
-- You MUST rank EVERY SINGLE response provided above (from A to {labels[-1]}) - do not skip any!
-- Do not add any other text or explanations in the ranking section
+Ranking: [Response Letter] > [Response Letter] > [Response Letter] ...
 
-Example of the correct format for your FINAL RANKING section (if there are 3 responses):
-
-FINAL RANKING:
-1. Response C
-2. Response A
-3. Response B
-
-Now provide your evaluation and ranking of ALL {len(stage1_results)} responses:"""
-
-    messages_base = [{"role": "user", "content": ranking_prompt}]
+For example, if you think Response B is best, followed by A, then C:
+Ranking: Response B > Response A > Response C
+"""
 
     current_config = config.get_config()
     council_models = current_config["council_models"]
-    personalities = current_config.get("model_personalities", {})
+    timeout = current_config.get("response_timeout", 60)
 
-    # Create tasks for all models
+    # Create tasks for ranking
     tasks = []
     for model in council_models:
-        personality = personalities.get(model, "Expert AI Assistant")
         messages = [
-            {"role": "system", "content": f"You are a council member with the following personality: {personality}. Your task is to rank the responses of your peers."},
+            {"role": "system", "content": "You are a critical judge evaluating multiple AI responses."},
             {"role": "user", "content": ranking_prompt}
         ]
-        tasks.append(query_model(model, messages))
+        
+        async def query_with_logging(m, msgs, t):
+            if log_callback:
+                log_callback(f"Judge {m.split('/')[-1]} is evaluating all responses...")
+            res = await query_model(m, msgs, timeout=float(t))
+            if log_callback:
+                if res:
+                    log_callback(f"Judge {m.split('/')[-1]} has submitted their ranking.")
+                else:
+                    log_callback(f"Judge {m.split('/')[-1]} failed to rank.")
+            return res
+            
+        tasks.append(query_with_logging(model, messages, timeout))
 
-    # Get rankings from all council models in parallel
+    # Query all models in parallel
     import asyncio
     responses_list = await asyncio.gather(*tasks)
     responses = {model: resp for model, resp in zip(council_models, responses_list)}
@@ -152,65 +169,60 @@ Now provide your evaluation and ranking of ALL {len(stage1_results)} responses:"
 async def stage3_synthesize_final(
     user_query: str,
     stage1_results: List[Dict[str, Any]],
-    stage2_results: List[Dict[str, Any]]
+    stage2_results: List[Dict[str, Any]],
+    log_callback=None
 ) -> Dict[str, Any]:
     """
-    Stage 3: Chairman synthesizes final response.
+    Stage 3: A chairman model synthesizes all responses and rankings.
 
     Args:
         user_query: The original user query
-        stage1_results: Individual model responses from Stage 1
-        stage2_results: Rankings from Stage 2
+        stage1_results: Results from Stage 1
+        stage2_results: Results from Stage 2
+        log_callback: Optional callback for logging events
 
     Returns:
-        Dict with 'model' and 'response' keys
+        Dict with synthesized response and metadata
     """
-    # Build comprehensive context for chairman
-    stage1_text = "\n\n".join([
-        f"Model: {result['model']}\nResponse: {result['response']}"
-        for result in stage1_results
-    ])
-
-    stage2_text = "\n\n".join([
-        f"Model: {result['model']}\nRanking: {result['ranking']}"
-        for result in stage2_results
-    ])
-
-    chairman_prompt = f"""You are the Chairman of an LLM Council. Multiple AI models have provided responses to a user's question, and then ranked each other's responses.
-
-Original Question: {user_query}
-
-STAGE 1 - Individual Responses:
-{stage1_text}
-
-STAGE 2 - Peer Rankings:
-{stage2_text}
-
-Your task as Chairman is to synthesize all of this information into a single, comprehensive, accurate answer to the user's original question. Consider:
-- The individual responses and their insights
-- The peer rankings and what they reveal about response quality
-- Any patterns of agreement or disagreement
-
-Provide a clear, well-reasoned final answer that represents the council's collective wisdom:"""
-
-    messages = [{"role": "user", "content": chairman_prompt}]
-
     current_config = config.get_config()
-    chairman_model = current_config["chairman_model"]
+    chairman_model = current_config.get("chairman_model", "openai/gpt-4-turbo")
+    timeout = current_config.get("response_timeout", 60)
 
-    # Query the chairman model
-    response = await query_model(chairman_model, messages)
+    # Prepare context for chairman
+    context = f"User Question: {user_query}\n\n"
+    context += "Council Member Responses:\n"
+    for result in stage1_results:
+        context += f"Model {result['model']}:\n{result['response']}\n\n"
 
-    if response is None:
-        # Fallback if chairman fails
-        return {
-            "model": chairman_model,
-            "response": "Error: Unable to generate final synthesis."
-        }
+    context += "Peer Evaluations and Rankings:\n"
+    for result in stage2_results:
+        context += f"Judge {result['model']}:\n{result['ranking']}\n\n"
+
+    system_prompt = """You are the Chairman of the LLM Council. 
+Your task is to review all member responses and their peer evaluations.
+Synthesize the best points from all responses into one comprehensive, high-quality final answer.
+Be objective and acknowledge where models agreed or disagreed if it adds value to the user."""
+
+    if log_callback:
+        log_callback(f"Chairman {chairman_model.split('/')[-1]} is reviewing the council's work...")
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": context}
+    ]
+
+    response = await query_model(chairman_model, messages, timeout=float(timeout))
+    
+    if log_callback:
+        if response:
+            log_callback("Chairman has synthesized the final response.")
+        else:
+            log_callback("Chairman failed to synthesize. System error.")
 
     return {
         "model": chairman_model,
-        "response": response.get('content', '')
+        "response": response.get('content', '') if response else "Error: Chairman failed to respond.",
+        "usage": response.get('usage', {}) if response else {"total_tokens": 0}
     }
 
 

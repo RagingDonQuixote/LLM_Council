@@ -14,7 +14,7 @@ from .council import run_full_council, generate_conversation_title, stage1_colle
 from .openrouter import get_available_models, query_model
 from .version import PRINTNAME, VERSION
 
-app = FastAPI(title="LLM Council API")
+app = FastAPI(title=PRINTNAME)
 
 # Add a version endpoint
 @app.get("/api/version")
@@ -166,23 +166,56 @@ async def submit_human_feedback(conversation_id: str, request: HumanFeedbackRequ
     # Add human feedback to conversation
     storage.add_human_feedback(conversation_id, request.feedback, request.continue_discussion)
 
-    if request.continue_discussion:
-        # Rerun council with feedback incorporated
-        last_user_message = None
-        for msg in reversed(conversation["messages"]):
-            if msg["role"] == "user":
-                last_user_message = msg["content"]
-                break
+    if not request.continue_discussion:
+        return {"status": "feedback recorded", "continued": False}
 
-        if last_user_message:
-            # Modify query with human feedback
-            modified_query = f"{last_user_message}\n\nHuman Chairman Feedback: {request.feedback}\n\nPlease reconsider your analysis taking this feedback into account."
+    # Rerun council with feedback incorporated
+    last_user_message = None
+    for msg in reversed(conversation["messages"]):
+        if msg["role"] == "user":
+            last_user_message = msg["content"]
+            break
 
-            stage1_results, stage2_results, stage3_result, metadata = await run_full_council(
-                modified_query
-            )
+    if not last_user_message:
+        raise HTTPException(status_code=400, detail="No user message found to provide feedback on")
 
-            # Add new assistant message with updated stages
+    modified_query = f"{last_user_message}\n\nHuman Chairman Feedback: {request.feedback}\n\nPlease reconsider your analysis taking this feedback into account."
+
+    async def event_generator():
+        logs_to_send = []
+        def sync_log(msg):
+            logs_to_send.append(msg)
+
+        try:
+            # Stage 1: Collect responses
+            yield f"data: {json.dumps({'type': 'log', 'message': '🔄 Starting Revision with Human Feedback...'})}\n\n"
+            yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
+            
+            stage1_results = await stage1_collect_responses(modified_query, log_callback=sync_log)
+            for log in logs_to_send:
+                yield f"data: {json.dumps({'type': 'log', 'message': log})}\n\n"
+            logs_to_send.clear()
+            
+            yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
+
+            # Stage 2: Collect rankings
+            yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
+            stage2_results, label_to_model = await stage2_collect_rankings(modified_query, stage1_results, log_callback=sync_log)
+            for log in logs_to_send:
+                yield f"data: {json.dumps({'type': 'log', 'message': log})}\n\n"
+            logs_to_send.clear()
+            
+            aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
+            yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}})}\n\n"
+
+            # Stage 3: Synthesize final answer
+            yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
+            stage3_result = await stage3_synthesize_final(modified_query, stage1_results, stage2_results, log_callback=sync_log)
+            for log in logs_to_send:
+                yield f"data: {json.dumps({'type': 'log', 'message': log})}\n\n"
+            logs_to_send.clear()
+            
+            # Add assistant message with all stages
             storage.add_assistant_message(
                 conversation_id,
                 stage1_results,
@@ -190,15 +223,24 @@ async def submit_human_feedback(conversation_id: str, request: HumanFeedbackRequ
                 stage3_result
             )
 
-            return {
-                "stage1": stage1_results,
-                "stage2": stage2_results,
-                "stage3": stage3_result,
-                "metadata": metadata,
-                "continued": True
-            }
+            yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
+            
+            # CRITICAL: Re-enable Stage 4 for the next revision
+            yield f"data: {json.dumps({'type': 'log', 'message': 'Revision complete. Awaiting further review...'})}\n\n"
+            yield f"data: {json.dumps({'type': 'human_input_required'})}\n\n"
+            yield f"data: {json.dumps({'type': 'complete'})}\n\n"
 
-    return {"status": "feedback recorded", "continued": False}
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )
 
 
 @app.post("/api/conversations/{conversation_id}/end-session")
@@ -274,6 +316,11 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
     is_first_message = len(conversation["messages"]) == 0
 
     async def event_generator():
+        # Helper for logging during stages
+        logs_to_send = []
+        def sync_log(msg):
+            logs_to_send.append(msg)
+
         try:
             # Add user message
             storage.add_user_message(conversation_id, request.content)
@@ -284,26 +331,48 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                 title_task = asyncio.create_task(generate_conversation_title(request.content))
 
             # Stage 1: Collect responses
+            yield f"data: {json.dumps({'type': 'log', 'message': '🚀 Initializing Council Session...'})}\n\n"
             yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
-            stage1_results = await stage1_collect_responses(request.content)
+            yield f"data: {json.dumps({'type': 'log', 'message': 'Stage 1: Querying council members for individual analysis...'})}\n\n"
+            
+            stage1_results = await stage1_collect_responses(request.content, log_callback=sync_log)
+            for log in logs_to_send:
+                yield f"data: {json.dumps({'type': 'log', 'message': log})}\n\n"
+            logs_to_send.clear()
+
             print(f"DEBUG SSE: Stage 1 complete with {len(stage1_results)} results")
+            yield f"data: {json.dumps({'type': 'log', 'message': f'Stage 1 Complete: Received {len(stage1_results)} responses.'})}\n\n"
             yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
 
             # Stage 2: Collect rankings
             yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
-            stage2_results, label_to_model = await stage2_collect_rankings(request.content, stage1_results)
+            yield f"data: {json.dumps({'type': 'log', 'message': 'Stage 2: Cross-evaluating responses (Anonymized Peer Ranking)...'})}\n\n"
+            
+            stage2_results, label_to_model = await stage2_collect_rankings(request.content, stage1_results, log_callback=sync_log)
+            for log in logs_to_send:
+                yield f"data: {json.dumps({'type': 'log', 'message': log})}\n\n"
+            logs_to_send.clear()
+
             print(f"DEBUG SSE: Stage 2 complete with {len(stage2_results)} rankings")
             aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
+            yield f"data: {json.dumps({'type': 'log', 'message': 'Stage 2 Complete: Peer evaluations and rankings collected.'})}\n\n"
             yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}})}\n\n"
 
             # Stage 3: Synthesize final answer
             yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
-            print(f"DEBUG SSE: Starting Stage 3...")
-            stage3_result = await stage3_synthesize_final(request.content, stage1_results, stage2_results)
+            yield f"data: {json.dumps({'type': 'log', 'message': 'Stage 3: AI Chairman is synthesizing the final recommendation...'})}\n\n"
+            
+            stage3_result = await stage3_synthesize_final(request.content, stage1_results, stage2_results, log_callback=sync_log)
+            for log in logs_to_send:
+                yield f"data: {json.dumps({'type': 'log', 'message': log})}\n\n"
+            logs_to_send.clear()
+
             print(f"DEBUG SSE: Stage 3 complete")
+            yield f"data: {json.dumps({'type': 'log', 'message': 'Stage 3 Complete: Final analysis synthesized.'})}\n\n"
             yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
 
             # Human Chairman phase
+            yield f"data: {json.dumps({'type': 'log', 'message': 'Stage 4: Awaiting Human Chairman review and feedback...'})}\n\n"
             yield f"data: {json.dumps({'type': 'human_input_required'})}\n\n"
 
             # Wait for title generation if it was started

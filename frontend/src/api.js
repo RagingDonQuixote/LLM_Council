@@ -146,7 +146,7 @@ export const api = {
    * Get current council configuration.
    */
   async getVersion() {
-    const response = await fetch(`${API_BASE}/version`);
+    const response = await fetch(`${API_BASE}/api/version`);
     if (!response.ok) throw new Error('Failed to fetch version');
     return response.json();
   },

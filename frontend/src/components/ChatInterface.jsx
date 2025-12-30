@@ -14,8 +14,8 @@ export default function ChatInterface({
   showStage4,
   humanFeedback,
   setHumanFeedback,
-  onHumanFeedback,
-  setShowStage4,
+  onStage4Submit,
+  onStage4Cancel,
 }) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef(null);
@@ -156,9 +156,9 @@ export default function ChatInterface({
                     <Stage4
                       humanFeedback={humanFeedback}
                       setHumanFeedback={setHumanFeedback}
-                      onSubmit={() => onHumanFeedback(humanFeedback)}
+                      onSubmit={(continueDiscussion) => onStage4Submit(continueDiscussion)}
                       isLoading={isLoading}
-                      onCancel={() => setShowStage4(false)}
+                      onCancel={onStage4Cancel}
                     />
                   )}
                 </div>

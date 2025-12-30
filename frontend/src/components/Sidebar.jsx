@@ -99,18 +99,18 @@ export default function Sidebar({
                   {new Date(conv.created_at).toLocaleDateString()}
                 </div>
                 
-                {conv.revision_count > 1 && (
+                {conv.metadata?.revision_count > 0 && (
                   <div className="revision-badges">
-                    {[...Array(conv.revision_count)].map((_, i) => (
+                    {[...Array(conv.metadata.revision_count + 1)].map((_, i) => (
                       <span 
                         key={i}
                         className={`revision-badge ${
                           conv.id === currentConversationId && i === activeRevision ? 'active' : ''
                         }`}
                         onClick={(e) => handleRevisionClick(e, conv.id, i)}
-                        title={`Revision ${i + 1}`}
+                        title={i === 0 ? 'Original' : `Revision ${i}`}
                       >
-                        {i + 1}
+                        {i === 0 ? 'O' : `R${i}`}
                       </span>
                     ))}
                   </div>
