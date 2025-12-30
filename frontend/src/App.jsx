@@ -11,6 +11,7 @@ function App() {
   const [currentConversation, setCurrentConversation] = useState(null);
   const [activeRevision, setActiveRevision] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [versionInfo, setVersionInfo] = useState({ printname: 'LLM Council', version: '' });
   const [showSettings, setShowSettings] = useState(false);
   const [showStage4, setShowStage4] = useState(false);
   const [humanFeedback, setHumanFeedback] = useState('');
@@ -18,7 +19,17 @@ function App() {
   // Load conversations on mount
   useEffect(() => {
     loadConversations();
+    loadVersion();
   }, []);
+
+  const loadVersion = async () => {
+    try {
+      const info = await api.getVersion();
+      setVersionInfo(info);
+    } catch (error) {
+      console.error('Failed to load version:', error);
+    }
+  };
 
   // Load conversation details when selected
   useEffect(() => {
@@ -281,14 +292,15 @@ function App() {
   return (
     <div className="app">
       <Sidebar
-        conversations={conversations}
-        currentConversationId={currentConversationId}
-        activeRevision={activeRevision}
-        onSelectConversation={handleSelectConversation}
-        onNewConversation={handleNewConversation}
-        onDeleteConversation={handleDeleteConversation}
-        onOpenSettings={handleOpenSettings}
-      />
+          conversations={conversations}
+          currentConversationId={currentConversationId}
+          activeRevision={activeRevision}
+          onSelectConversation={handleSelectConversation}
+          onNewConversation={handleNewConversation}
+          onDeleteConversation={handleDeleteConversation}
+          onOpenSettings={handleOpenSettings}
+          versionInfo={versionInfo}
+        />
       <ChatInterface
         conversation={currentConversation}
         activeRevision={activeRevision}

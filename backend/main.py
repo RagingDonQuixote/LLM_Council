@@ -12,8 +12,14 @@ import asyncio
 from . import storage, config
 from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
 from .openrouter import get_available_models, query_model
+from .version import PRINTNAME, VERSION
 
 app = FastAPI(title="LLM Council API")
+
+# Add a version endpoint
+@app.get("/api/version")
+async def get_version():
+    return {"printname": PRINTNAME, "version": VERSION}
 
 # Enable CORS for local development
 app.add_middleware(

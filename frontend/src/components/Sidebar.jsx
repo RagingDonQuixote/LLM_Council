@@ -9,6 +9,7 @@ export default function Sidebar({
   onNewConversation,
   onDeleteConversation,
   onOpenSettings,
+  versionInfo,
 }) {
   const handleDeleteClick = async (e, id) => {
     e.stopPropagation();
@@ -48,7 +49,7 @@ export default function Sidebar({
   return (
     <div className="sidebar">
       <div className="sidebar-header">
-        <h1>LLM Council</h1>
+        <h1>{versionInfo?.printname || 'LLM Council'}</h1>
         <div className="header-buttons">
           <button className="settings-btn" onClick={onOpenSettings}>
             ⚙️ Settings
