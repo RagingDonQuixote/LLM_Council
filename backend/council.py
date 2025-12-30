@@ -304,6 +304,7 @@ Your output must be a JSON object:
         return {
             "model": chairman_model,
             "action": decision.get('action', 'FINAL_ANSWER'),
+            "reasoning": decision.get('reasoning', ''),
             "response": decision.get('content', ''),
             "new_instruction": decision.get('new_instruction', ''),
             "usage": response.get('usage', {}) if response else {"total_tokens": 0}
@@ -314,6 +315,7 @@ Your output must be a JSON object:
         return {
             "model": chairman_model,
             "action": "FINAL_ANSWER",
+            "reasoning": f"Error: {str(e)}",
             "response": response.get('content', '') if response else "Error: Chairman failed to respond.",
             "usage": response.get('usage', {}) if response else {"total_tokens": 0}
         }

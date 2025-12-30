@@ -248,7 +248,8 @@ async def submit_human_feedback(conversation_id: str, request: HumanFeedbackRequ
                 # Stage 3: Synthesize / Decide
                 yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
                 stage3_result = await stage3_synthesize_final(modified_query, stage1_results, stage2_results, plan=plan, log_callback=sync_log)
-                print(f"[STAGE 3] Decision: {stage3_result.get('action')} - Reasoning: {stage3_result.get('reasoning')[:100]}...")
+                reasoning = stage3_result.get('reasoning', '')
+                print(f"[STAGE 3] Decision: {stage3_result.get('action')} - Reasoning: {reasoning[:100] if reasoning else ''}...")
                 for log in logs_to_send:
                     yield f"data: {json.dumps({'type': 'log', 'message': log})}\n\n"
                 logs_to_send.clear()
@@ -434,7 +435,8 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
                 yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
                 
                 stage3_result = await stage3_synthesize_final(request.content, stage1_results, stage2_results, plan=plan, log_callback=sync_log)
-                print(f"[STAGE 3] Decision: {stage3_result.get('action')} - Reasoning: {stage3_result.get('reasoning')[:100]}...")
+                reasoning = stage3_result.get('reasoning', '')
+                print(f"[STAGE 3] Decision: {stage3_result.get('action')} - Reasoning: {reasoning[:100] if reasoning else ''}...")
                 for log in logs_to_send:
                     yield f"data: {json.dumps({'type': 'log', 'message': log})}\n\n"
                 logs_to_send.clear()
