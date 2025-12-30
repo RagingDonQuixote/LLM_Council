@@ -184,46 +184,86 @@ async def submit_human_feedback(conversation_id: str, request: HumanFeedbackRequ
     async def event_generator():
         logs_to_send = []
         def sync_log(msg):
+            print(f"[COUNCIL] {msg}")
             logs_to_send.append(msg)
 
         try:
-            # Stage 1: Collect responses
-            yield f"data: {json.dumps({'type': 'log', 'message': '🔄 Starting Revision with Human Feedback...'})}\n\n"
-            yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
-            
-            stage1_results = await stage1_collect_responses(modified_query, log_callback=sync_log)
+            # Stage 0: Analysis & Planning for the feedback
+            msg = "🔄 Analyzing Human Feedback Strategy..."
+            print(f"\n{'='*50}\n[STRATEGY] {msg}\n{'='*50}")
+            yield f"data: {json.dumps({'type': 'log', 'message': msg})}\n\n"
+            plan = await stage0_analyze_and_plan(modified_query, log_callback=sync_log)
             for log in logs_to_send:
                 yield f"data: {json.dumps({'type': 'log', 'message': log})}\n\n"
             logs_to_send.clear()
-            
-            yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
 
-            # Stage 2: Collect rankings
-            yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
-            stage2_results, label_to_model = await stage2_collect_rankings(modified_query, stage1_results, log_callback=sync_log)
-            for log in logs_to_send:
-                yield f"data: {json.dumps({'type': 'log', 'message': log})}\n\n"
-            logs_to_send.clear()
-            
-            aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
-            yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}})}\n\n"
+            current_instruction = plan.get('current_goal')
+            max_rounds = 3
+            current_round = 1
+            all_stage1_results = []
+            all_stage2_results = []
+            final_stage3_result = None
+            metadata = {}
 
-            # Stage 3: Synthesize final answer
-            yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
-            stage3_result = await stage3_synthesize_final(modified_query, stage1_results, stage2_results, log_callback=sync_log)
-            for log in logs_to_send:
-                yield f"data: {json.dumps({'type': 'log', 'message': log})}\n\n"
-            logs_to_send.clear()
-            
+            while current_round <= max_rounds:
+                round_prefix = f"Revision Round {current_round}: " if max_rounds > 1 else ""
+                msg = f"--- {round_prefix}Negotiation & Revision ---"
+                print(f"\n[ROUND {current_round}] {msg}")
+                yield f"data: {json.dumps({'type': 'log', 'message': msg})}\n\n"
+
+                # Stage 1: Collect responses
+                yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
+                log_msg = f"Stage 1: {current_instruction}"
+                print(f"[STAGE 1] {log_msg}")
+                yield f"data: {json.dumps({'type': 'log', 'message': log_msg})}\n\n"
+                
+                stage1_results = await stage1_collect_responses(modified_query, log_callback=sync_log, instruction=current_instruction)
+                for log in logs_to_send:
+                    yield f"data: {json.dumps({'type': 'log', 'message': log})}\n\n"
+                logs_to_send.clear()
+                
+                all_stage1_results.append(stage1_results)
+                yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
+
+                # Stage 2: Collect rankings
+                yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
+                stage2_results, label_to_model = await stage2_collect_rankings(modified_query, stage1_results, log_callback=sync_log)
+                for log in logs_to_send:
+                    yield f"data: {json.dumps({'type': 'log', 'message': log})}\n\n"
+                logs_to_send.clear()
+                
+                all_stage2_results.append(stage2_results)
+                aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
+                metadata = {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}
+                yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': metadata})}\n\n"
+
+                # Stage 3: Synthesize / Decide
+                yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
+                stage3_result = await stage3_synthesize_final(modified_query, stage1_results, stage2_results, plan=plan, log_callback=sync_log)
+                print(f"[STAGE 3] Decision: {stage3_result.get('action')} - Reasoning: {stage3_result.get('reasoning')[:100]}...")
+                for log in logs_to_send:
+                    yield f"data: {json.dumps({'type': 'log', 'message': log})}\n\n"
+                logs_to_send.clear()
+
+                final_stage3_result = stage3_result
+                yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
+
+                if stage3_result.get('action') == "FINAL_ANSWER" or current_round == max_rounds:
+                    break
+                
+                # Prepare for next round
+                current_instruction = stage3_result.get('new_instruction', 'Continue the revision.')
+                current_round += 1
+                yield f"data: {json.dumps({'type': 'log', 'message': f'🔄 Revision consensus not yet reached. Starting Round {current_round}...'})}\n\n"
+
             # Add assistant message with all stages
             storage.add_assistant_message(
                 conversation_id,
-                stage1_results,
-                stage2_results,
-                stage3_result
+                all_stage1_results[-1],
+                all_stage2_results[-1],
+                final_stage3_result,
+                metadata
             )
-
-            yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
             
             # CRITICAL: Re-enable Stage 4 for the next revision
             yield f"data: {json.dumps({'type': 'log', 'message': 'Revision complete. Awaiting further review...'})}\n\n"
@@ -319,6 +359,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
         # Helper for logging during stages
         logs_to_send = []
         def sync_log(msg):
+            print(f"[COUNCIL] {msg}")
             logs_to_send.append(msg)
 
         try:
@@ -330,46 +371,85 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             if is_first_message:
                 title_task = asyncio.create_task(generate_conversation_title(request.content))
 
-            # Stage 1: Collect responses
-            yield f"data: {json.dumps({'type': 'log', 'message': '🚀 Initializing Council Session...'})}\n\n"
-            yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
-            yield f"data: {json.dumps({'type': 'log', 'message': 'Stage 1: Querying council members for individual analysis...'})}\n\n"
-            
-            stage1_results = await stage1_collect_responses(request.content, log_callback=sync_log)
+            # Stage 0: Analysis & Planning
+            msg = "🚀 Initializing Council Session..."
+            print(f"\n{'='*50}\n[STRATEGY] {msg}\n{'='*50}")
+            yield f"data: {json.dumps({'type': 'log', 'message': msg})}\n\n"
+            plan = await stage0_analyze_and_plan(request.content, log_callback=sync_log)
             for log in logs_to_send:
                 yield f"data: {json.dumps({'type': 'log', 'message': log})}\n\n"
             logs_to_send.clear()
 
-            print(f"DEBUG SSE: Stage 1 complete with {len(stage1_results)} results")
-            yield f"data: {json.dumps({'type': 'log', 'message': f'Stage 1 Complete: Received {len(stage1_results)} responses.'})}\n\n"
-            yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
+            current_instruction = plan.get('current_goal')
+            max_rounds = 3
+            current_round = 1
+            all_stage1_results = []
+            all_stage2_results = []
+            final_stage3_result = None
+            metadata = {}
 
-            # Stage 2: Collect rankings
-            yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
-            yield f"data: {json.dumps({'type': 'log', 'message': 'Stage 2: Cross-evaluating responses (Anonymized Peer Ranking)...'})}\n\n"
-            
-            stage2_results, label_to_model = await stage2_collect_rankings(request.content, stage1_results, log_callback=sync_log)
-            for log in logs_to_send:
-                yield f"data: {json.dumps({'type': 'log', 'message': log})}\n\n"
-            logs_to_send.clear()
+            while current_round <= max_rounds:
+                round_prefix = f"Round {current_round}: " if max_rounds > 1 else ""
+                msg = f"--- {round_prefix}Negotiation & Execution ---"
+                print(f"\n[ROUND {current_round}] {msg}")
+                yield f"data: {json.dumps({'type': 'log', 'message': msg})}\n\n"
 
-            print(f"DEBUG SSE: Stage 2 complete with {len(stage2_results)} rankings")
-            aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
-            yield f"data: {json.dumps({'type': 'log', 'message': 'Stage 2 Complete: Peer evaluations and rankings collected.'})}\n\n"
-            yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}})}\n\n"
+                # Stage 1: Collect responses
+                yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
+                log_msg = f"Stage 1: {current_instruction}"
+                print(f"[STAGE 1] {log_msg}")
+                yield f"data: {json.dumps({'type': 'log', 'message': log_msg})}\n\n"
+                
+                stage1_results = await stage1_collect_responses(request.content, log_callback=sync_log, instruction=current_instruction)
+                for log in logs_to_send:
+                    yield f"data: {json.dumps({'type': 'log', 'message': log})}\n\n"
+                logs_to_send.clear()
 
-            # Stage 3: Synthesize final answer
-            yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
-            yield f"data: {json.dumps({'type': 'log', 'message': 'Stage 3: AI Chairman is synthesizing the final recommendation...'})}\n\n"
-            
-            stage3_result = await stage3_synthesize_final(request.content, stage1_results, stage2_results, log_callback=sync_log)
-            for log in logs_to_send:
-                yield f"data: {json.dumps({'type': 'log', 'message': log})}\n\n"
-            logs_to_send.clear()
+                all_stage1_results.append(stage1_results)
+                yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
 
-            print(f"DEBUG SSE: Stage 3 complete")
-            yield f"data: {json.dumps({'type': 'log', 'message': 'Stage 3 Complete: Final analysis synthesized.'})}\n\n"
-            yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
+                # Stage 2: Collect rankings
+                yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
+                yield f"data: {json.dumps({'type': 'log', 'message': 'Stage 2: Cross-evaluating responses...'})}\n\n"
+                
+                stage2_results, label_to_model = await stage2_collect_rankings(request.content, stage1_results, log_callback=sync_log)
+                for log in logs_to_send:
+                    yield f"data: {json.dumps({'type': 'log', 'message': log})}\n\n"
+                logs_to_send.clear()
+
+                all_stage2_results.append(stage2_results)
+                aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
+                metadata = {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}
+                yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': metadata})}\n\n"
+
+                # Stage 3: Synthesize / Decide
+                yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
+                
+                stage3_result = await stage3_synthesize_final(request.content, stage1_results, stage2_results, plan=plan, log_callback=sync_log)
+                print(f"[STAGE 3] Decision: {stage3_result.get('action')} - Reasoning: {stage3_result.get('reasoning')[:100]}...")
+                for log in logs_to_send:
+                    yield f"data: {json.dumps({'type': 'log', 'message': log})}\n\n"
+                logs_to_send.clear()
+
+                final_stage3_result = stage3_result
+                yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
+
+                if stage3_result.get('action') == "FINAL_ANSWER" or current_round == max_rounds:
+                    break
+                
+                # Prepare for next round
+                current_instruction = stage3_result.get('new_instruction', 'Continue the discussion.')
+                current_round += 1
+                yield f"data: {json.dumps({'type': 'log', 'message': f'🔄 Consensus not yet reached. Starting Round {current_round}...'})}\n\n"
+
+            # Finalize Assistant Message
+            storage.add_assistant_message(
+                conversation_id,
+                all_stage1_results[-1], # Save the last round's results
+                all_stage2_results[-1],
+                final_stage3_result,
+                metadata
+            )
 
             # Human Chairman phase
             yield f"data: {json.dumps({'type': 'log', 'message': 'Stage 4: Awaiting Human Chairman review and feedback...'})}\n\n"

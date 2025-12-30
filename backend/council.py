@@ -5,16 +5,73 @@ from .openrouter import query_models_parallel, query_model
 from . import config
 
 
-async def stage1_collect_responses(user_query: str, log_callback=None) -> List[Dict[str, Any]]:
+async def stage0_analyze_and_plan(user_query: str, log_callback=None) -> Dict[str, Any]:
+    """
+    Stage 0: Chairman analyzes the task and creates a plan.
+    Detects if a multi-step consensus loop is needed.
+    """
+    current_config = config.get_config()
+    chairman_model = current_config.get("chairman_model", "openai/gpt-4-turbo")
+    timeout = current_config.get("response_timeout", 60)
+
+    system_prompt = """You are the Strategic Planner of the LLM Council.
+Analyze the user's request and determine the best execution strategy.
+
+Identify if the task requires:
+1. DIRECT_EXECUTION: A straightforward question or task.
+2. CONSENSUS_LOOP: A task where models must first agree on parameters (e.g., "agree on 5 words", "choose a theme", "define a common structure") before proceeding.
+
+Your output must be a JSON object:
+{
+  "strategy": "DIRECT_EXECUTION" | "CONSENSUS_LOOP",
+  "reasoning": "Why this strategy?",
+  "current_goal": "What is the immediate next goal for the council members?",
+  "requires_consensus": boolean
+}
+"""
+
+    if log_callback:
+        log_callback(f"Chairman {chairman_model.split('/')[-1]} is analyzing the request strategy...")
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_query}
+    ]
+
+    import json
+    response = await query_model(chairman_model, messages, timeout=float(timeout))
+    
+    try:
+        content = response.get('content', '{}')
+        # Clean potential markdown
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0].strip()
+        elif "```" in content:
+            content = content.split("```")[1].split("```")[0].strip()
+        
+        plan = json.loads(content)
+        if log_callback:
+            log_callback(f"Strategy identified: {plan.get('strategy', 'DIRECT_EXECUTION')}. Goal: {plan.get('current_goal')}")
+        return plan
+    except Exception as e:
+        if log_callback:
+            log_callback(f"Error parsing strategy: {str(e)}. Defaulting to DIRECT_EXECUTION.")
+        return {
+            "strategy": "DIRECT_EXECUTION",
+            "reasoning": "Fallback due to parsing error.",
+            "current_goal": "Answer the user query.",
+            "requires_consensus": False
+        }
+
+
+async def stage1_collect_responses(user_query: str, log_callback=None, instruction=None) -> List[Dict[str, Any]]:
     """
     Stage 1: Collect individual responses from all council models.
 
     Args:
         user_query: The user's question
         log_callback: Optional callback for logging events
-
-    Returns:
-        List of dicts with 'model' and 'response' keys
+        instruction: Optional specific instruction from the Chairman's plan
     """
     current_config = config.get_config()
     council_models = current_config["council_models"]
@@ -27,8 +84,13 @@ async def stage1_collect_responses(user_query: str, log_callback=None) -> List[D
         personality = personalities.get(model, "Expert AI Assistant")
         if log_callback:
             log_callback(f"Preparing query for council member: {model.split('/')[-1]}")
+        
+        system_content = f"You are a council member with the following personality: {personality}."
+        if instruction:
+            system_content += f"\n\nIMPORTANT CURRENT GOAL: {instruction}"
+
         messages = [
-            {"role": "system", "content": f"You are a council member with the following personality: {personality}"},
+            {"role": "system", "content": system_content},
             {"role": "user", "content": user_query}
         ]
         
@@ -170,26 +232,23 @@ async def stage3_synthesize_final(
     user_query: str,
     stage1_results: List[Dict[str, Any]],
     stage2_results: List[Dict[str, Any]],
+    plan: Dict[str, Any] = None,
     log_callback=None
 ) -> Dict[str, Any]:
     """
     Stage 3: A chairman model synthesizes all responses and rankings.
-
-    Args:
-        user_query: The original user query
-        stage1_results: Results from Stage 1
-        stage2_results: Results from Stage 2
-        log_callback: Optional callback for logging events
-
-    Returns:
-        Dict with synthesized response and metadata
+    Can decide to continue the consensus loop if necessary.
     """
     current_config = config.get_config()
     chairman_model = current_config.get("chairman_model", "openai/gpt-4-turbo")
     timeout = current_config.get("response_timeout", 60)
 
     # Prepare context for chairman
-    context = f"User Question: {user_query}\n\n"
+    context = f"Original User Question: {user_query}\n\n"
+    if plan:
+        context += f"Current Strategic Plan: {plan.get('reasoning')}\n"
+        context += f"Current Goal: {plan.get('current_goal')}\n\n"
+
     context += "Council Member Responses:\n"
     for result in stage1_results:
         context += f"Model {result['model']}:\n{result['response']}\n\n"
@@ -198,32 +257,66 @@ async def stage3_synthesize_final(
     for result in stage2_results:
         context += f"Judge {result['model']}:\n{result['ranking']}\n\n"
 
-    system_prompt = """You are the Chairman of the LLM Council. 
-Your task is to review all member responses and their peer evaluations.
-Synthesize the best points from all responses into one comprehensive, high-quality final answer.
-Be objective and acknowledge where models agreed or disagreed if it adds value to the user."""
+    system_prompt = """You are the Chairman of the LLM Council.
+Review the member responses and evaluations.
+
+Your task is to decide:
+1. Is the current goal met? (e.g., if a consensus was required, have they agreed?)
+2. If YES, synthesize the final high-quality answer.
+3. If NO, create a 'Consensus Proposal' or a specific follow-up instruction to resolve the disagreement/lack of parameters.
+
+Your output must be a JSON object:
+{
+  "action": "FINAL_ANSWER" | "CONTINUE_NEGOTIATION",
+  "content": "The synthesized final answer OR the new instruction/proposal for the council",
+  "reasoning": "Why are you taking this action?",
+  "new_instruction": "If CONTINUE_NEGOTIATION, what exactly should the models do next? (e.g. 'We will use these 5 words: A, B, C, D, E. Now write the poem.')"
+}
+"""
 
     if log_callback:
-        log_callback(f"Chairman {chairman_model.split('/')[-1]} is reviewing the council's work...")
+        log_callback(f"Chairman {chairman_model.split('/')[-1]} is evaluating the results and consensus...")
 
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": context}
     ]
 
+    import json
     response = await query_model(chairman_model, messages, timeout=float(timeout))
     
-    if log_callback:
-        if response:
-            log_callback("Chairman has synthesized the final response.")
-        else:
-            log_callback("Chairman failed to synthesize. System error.")
+    try:
+        raw_content = response.get('content', '{}')
+        # Clean potential markdown
+        if "```json" in raw_content:
+            raw_content = raw_content.split("```json")[1].split("```")[0].strip()
+        elif "```" in raw_content:
+            raw_content = raw_content.split("```")[1].split("```")[0].strip()
+        
+        decision = json.loads(raw_content)
+        
+        if log_callback:
+            if decision.get('action') == "FINAL_ANSWER":
+                log_callback("Chairman has synthesized the final response.")
+            else:
+                log_callback(f"Chairman requests another round: {decision.get('reasoning')}")
 
-    return {
-        "model": chairman_model,
-        "response": response.get('content', '') if response else "Error: Chairman failed to respond.",
-        "usage": response.get('usage', {}) if response else {"total_tokens": 0}
-    }
+        return {
+            "model": chairman_model,
+            "action": decision.get('action', 'FINAL_ANSWER'),
+            "response": decision.get('content', ''),
+            "new_instruction": decision.get('new_instruction', ''),
+            "usage": response.get('usage', {}) if response else {"total_tokens": 0}
+        }
+    except Exception as e:
+        if log_callback:
+            log_callback(f"Error parsing chairman decision: {str(e)}. Defaulting to FINAL_ANSWER.")
+        return {
+            "model": chairman_model,
+            "action": "FINAL_ANSWER",
+            "response": response.get('content', '') if response else "Error: Chairman failed to respond.",
+            "usage": response.get('usage', {}) if response else {"total_tokens": 0}
+        }
 
 
 def parse_ranking_from_text(ranking_text: str) -> List[str]:
@@ -361,7 +454,7 @@ Title:"""
 
 async def run_full_council(user_query: str) -> Tuple[List, List, Dict, Dict]:
     """
-    Run the complete 3-stage council process.
+    Run the complete 3-stage council process with consensus loop.
 
     Args:
         user_query: The user's question
@@ -369,39 +462,51 @@ async def run_full_council(user_query: str) -> Tuple[List, List, Dict, Dict]:
     Returns:
         Tuple of (stage1_results, stage2_results, stage3_result, metadata)
     """
-    # Stage 1: Collect individual responses
-    stage1_results = await stage1_collect_responses(user_query)
+    # Stage 0: Analysis & Planning
+    plan = await stage0_analyze_and_plan(user_query)
+    current_instruction = plan.get('current_goal')
+    
+    max_rounds = 3
+    current_round = 1
+    last_stage1 = []
+    last_stage2 = []
+    last_stage3 = {}
+    last_metadata = {}
 
-    # If no models responded successfully, return error
-    if not stage1_results:
-        return [], [], {
-            "model": "error",
-            "response": "All models failed to respond. Please try again."
-        }, {}
+    while current_round <= max_rounds:
+        # Stage 1: Collect individual responses
+        stage1_results = await stage1_collect_responses(user_query, instruction=current_instruction)
+        last_stage1 = stage1_results
 
-    # Check if we have at least 1 result
-    print(f"DEBUG: Stage 1 complete with {len(stage1_results)} results")
+        # If no models responded successfully, break
+        if not stage1_results:
+            break
 
-    # Stage 2: Collect rankings
-    stage2_results, label_to_model = await stage2_collect_rankings(user_query, stage1_results)
-    print(f"DEBUG: Stage 2 complete with {len(stage2_results)} rankings")
+        # Stage 2: Collect rankings
+        stage2_results, label_to_model = await stage2_collect_rankings(user_query, stage1_results)
+        last_stage2 = stage2_results
+        
+        # Calculate aggregate rankings
+        aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
+        last_metadata = {
+            "label_to_model": label_to_model,
+            "aggregate_rankings": aggregate_rankings
+        }
 
-    # Calculate aggregate rankings
-    aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
+        # Stage 3: Synthesize / Decide
+        stage3_result = await stage3_synthesize_final(
+            user_query,
+            stage1_results,
+            stage2_results,
+            plan=plan
+        )
+        last_stage3 = stage3_result
 
-    # Stage 3: Synthesize final answer
-    print(f"DEBUG: Starting Stage 3...")
-    stage3_result = await stage3_synthesize_final(
-        user_query,
-        stage1_results,
-        stage2_results
-    )
-    print(f"DEBUG: Stage 3 complete")
+        if stage3_result.get('action') == "FINAL_ANSWER" or current_round == max_rounds:
+            break
+        
+        # Prepare for next round
+        current_instruction = stage3_result.get('new_instruction', 'Continue the discussion.')
+        current_round += 1
 
-    # Prepare metadata
-    metadata = {
-        "label_to_model": label_to_model,
-        "aggregate_rankings": aggregate_rankings
-    }
-
-    return stage1_results, stage2_results, stage3_result, metadata
+    return last_stage1, last_stage2, last_stage3, last_metadata

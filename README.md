@@ -9,6 +9,7 @@ In a bit more detail, here is what happens when you submit a query:
 1. **Stage 1: First opinions**. The user query is given to all LLMs individually, and the responses are collected. The individual responses are shown in a "tab view", so that the user can inspect them all one by one.
 2. **Stage 2: Review**. Each individual LLM is given the responses of the other LLMs. Under the hood, the LLM identities are anonymized so that the LLM can't play favorites when judging their outputs. The LLM is asked to rank them in accuracy and insight.
 3. **Stage 3: Final response**. The designated Chairman of the LLM Council takes all of the model's responses and compiles them into a single final answer that is presented to the user.
+4. **Stage 0 & Loops (v1.2)**: The Chairman now analyzes the task beforehand. If a consensus is needed (e.g. agreeing on parameters), the council enters iterative negotiation rounds before finalizing the answer.
 
 ## Vibe Code Alert
 

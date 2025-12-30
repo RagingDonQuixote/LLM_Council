@@ -23,14 +23,16 @@ LLM Council is a 3-stage deliberation system where multiple LLMs collaboratively
 - Graceful degradation: returns None on failure, continues with successful responses
 
 **`council.py`** - The Core Logic
-- `stage1_collect_responses()`: Parallel queries to all council models
+- `stage0_analyze_and_plan()` (v1.2): Initial task analysis to detect consensus needs
+- `stage1_collect_responses()`: Parallel queries to all council models (now accepts Chairman instructions)
 - `stage2_collect_rankings()`:
   - Anonymizes responses as "Response A, B, C, etc."
   - Creates `label_to_model` mapping for de-anonymization
   - Prompts models to evaluate and rank (with strict format requirements)
   - Returns tuple: (rankings_list, label_to_model_dict)
   - Each ranking includes both raw text and `parsed_ranking` list
-- `stage3_synthesize_final()`: Chairman synthesizes from all responses + rankings
+- `stage3_synthesize_final()`: Chairman decides to finalize or continue negotiation (returns JSON with `action`)
+- `run_full_council()`: Orchestrates the multi-round loop (max 3 rounds)
 - `parse_ranking_from_text()`: Extracts "FINAL RANKING:" section, handles both numbered lists and plain format
 - `calculate_aggregate_rankings()`: Computes average rank position across all peer evaluations
 
