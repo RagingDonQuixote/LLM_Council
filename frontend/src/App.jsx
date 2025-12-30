@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatInterface from './components/ChatInterface';
+import Settings from './components/Settings';
 import { api } from './api';
 import './App.css';
 
@@ -8,7 +9,11 @@ function App() {
   const [conversations, setConversations] = useState([]);
   const [currentConversationId, setCurrentConversationId] = useState(null);
   const [currentConversation, setCurrentConversation] = useState(null);
+  const [activeRevision, setActiveRevision] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showStage4, setShowStage4] = useState(false);
+  const [humanFeedback, setHumanFeedback] = useState('');
 
   // Load conversations on mount
   useEffect(() => {
@@ -31,12 +36,34 @@ function App() {
     }
   };
 
-  const loadConversation = async (id) => {
+  const loadConversation = async (id, revisionIndex = null) => {
     try {
       const conv = await api.getConversation(id);
       setCurrentConversation(conv);
+      
+      // If a revision index was provided, set it. Otherwise default to the last one.
+      const assistantMsgs = conv.messages.filter(m => m.role === 'assistant');
+      if (revisionIndex !== null) {
+        setActiveRevision(revisionIndex);
+      } else {
+        setActiveRevision(Math.max(0, assistantMsgs.length - 1));
+      }
     } catch (error) {
       console.error('Failed to load conversation:', error);
+    }
+  };
+
+  const handleDeleteConversation = async (id) => {
+    try {
+      await api.deleteConversation(id);
+      setConversations(conversations.filter((c) => c.id !== id));
+      if (currentConversationId === id) {
+        setCurrentConversationId(null);
+        setCurrentConversation(null);
+      }
+    } catch (error) {
+      console.error('Failed to delete conversation:', error);
+      alert('Failed to delete conversation');
     }
   };
 
@@ -53,8 +80,70 @@ function App() {
     }
   };
 
-  const handleSelectConversation = (id) => {
-    setCurrentConversationId(id);
+  const handleSelectConversation = (id, revisionIndex = null) => {
+    if (id === currentConversationId && revisionIndex !== null) {
+      setActiveRevision(revisionIndex);
+    } else {
+      setCurrentConversationId(id);
+      // loadConversation will be triggered by useEffect
+      // but we need to pass the revisionIndex somehow or let it default
+    }
+  };
+
+  const handleOpenSettings = () => {
+    setShowSettings(true);
+  };
+
+  const handleCloseSettings = () => {
+    setShowSettings(false);
+  };
+
+  const handleHumanFeedbackSubmit = async (continueDiscussion) => {
+    if (!currentConversationId) return;
+
+    setIsLoading(true);
+    try {
+      const result = await api.submitHumanFeedback(currentConversationId, humanFeedback, continueDiscussion);
+
+      if (result.continued) {
+        // Reload conversation to show new stages
+        loadConversation(currentConversationId);
+        // Reset for potential next iteration
+        setShowStage4(false);
+        setHumanFeedback('');
+      } else {
+        // End session
+        handleEndSession();
+        setShowStage4(false);
+        setHumanFeedback('');
+      }
+    } catch (error) {
+      console.error('Failed to submit feedback:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleEndSession = () => {
+    const rating = prompt('Please rate this council session (0-5 stars):', '5');
+    if (rating !== null) {
+      const numRating = parseInt(rating);
+      if (numRating >= 0 && numRating <= 5) {
+        api.endSession(currentConversationId, numRating).then(() => {
+          alert('Session ended. Thank you for your feedback!');
+          loadConversations();
+        });
+      }
+    }
+  };
+
+  const handleStage4Submit = (continueDiscussion) => {
+    handleHumanFeedbackSubmit(continueDiscussion);
+  };
+
+  const handleStage4Cancel = () => {
+    setShowStage4(false);
+    setHumanFeedback('');
   };
 
   const handleSendMessage = async (content) => {
@@ -75,11 +164,13 @@ function App() {
         stage1: null,
         stage2: null,
         stage3: null,
+        stage4: null,
         metadata: null,
         loading: {
           stage1: false,
           stage2: false,
           stage3: false,
+          stage4: false,
         },
       };
 
@@ -150,6 +241,12 @@ function App() {
             });
             break;
 
+          case 'human_input_required':
+            // Show Stage 4 instead of modal
+            setShowStage4(true);
+            setIsLoading(false);
+            break;
+
           case 'title_complete':
             // Reload conversations to get updated title
             loadConversations();
@@ -186,14 +283,27 @@ function App() {
       <Sidebar
         conversations={conversations}
         currentConversationId={currentConversationId}
+        activeRevision={activeRevision}
         onSelectConversation={handleSelectConversation}
         onNewConversation={handleNewConversation}
+        onDeleteConversation={handleDeleteConversation}
+        onOpenSettings={handleOpenSettings}
       />
       <ChatInterface
         conversation={currentConversation}
+        activeRevision={activeRevision}
         onSendMessage={handleSendMessage}
         isLoading={isLoading}
+        showStage4={showStage4}
+        humanFeedback={humanFeedback}
+        setHumanFeedback={setHumanFeedback}
+        onStage4Submit={handleStage4Submit}
+        onStage4Cancel={handleStage4Cancel}
+        isLoadingStage4={isLoading}
       />
+      {showSettings && (
+        <Settings onClose={handleCloseSettings} />
+      )}
     </div>
   );
 }

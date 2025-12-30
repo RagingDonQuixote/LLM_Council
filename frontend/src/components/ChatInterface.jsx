@@ -3,15 +3,50 @@ import ReactMarkdown from 'react-markdown';
 import Stage1 from './Stage1';
 import Stage2 from './Stage2';
 import Stage3 from './Stage3';
+import Stage4 from './Stage4';
 import './ChatInterface.css';
 
 export default function ChatInterface({
   conversation,
+  activeRevision,
   onSendMessage,
   isLoading,
+  showStage4,
+  humanFeedback,
+  setHumanFeedback,
+  onHumanFeedback,
+  setShowStage4,
 }) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef(null);
+
+  // Filter messages to show only up to the active revision
+  const getVisibleMessages = () => {
+    if (!conversation) return [];
+    
+    const visibleMessages = [];
+    let assistantCount = 0;
+    
+    for (const msg of conversation.messages) {
+      if (msg.role === 'assistant') {
+        if (assistantCount === activeRevision) {
+          visibleMessages.push(msg);
+          break; // Stop after showing the active revision
+        }
+        assistantCount++;
+      } else if (msg.role === 'human_chairman') {
+        // Only show human feedback if it leads up to the active revision
+        if (assistantCount <= activeRevision) {
+          visibleMessages.push(msg);
+        }
+      } else {
+        visibleMessages.push(msg);
+      }
+    }
+    return visibleMessages;
+  };
+
+  const visibleMessages = getVisibleMessages();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -19,7 +54,7 @@ export default function ChatInterface({
 
   useEffect(() => {
     scrollToBottom();
-  }, [conversation]);
+  }, [conversation, activeRevision]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -51,13 +86,13 @@ export default function ChatInterface({
   return (
     <div className="chat-interface">
       <div className="messages-container">
-        {conversation.messages.length === 0 ? (
+        {visibleMessages.length === 0 ? (
           <div className="empty-state">
             <h2>Start a conversation</h2>
             <p>Ask a question to consult the LLM Council</p>
           </div>
         ) : (
-          conversation.messages.map((msg, index) => (
+          visibleMessages.map((msg, index) => (
             <div key={index} className="message-group">
               {msg.role === 'user' ? (
                 <div className="user-message">
@@ -68,9 +103,20 @@ export default function ChatInterface({
                     </div>
                   </div>
                 </div>
+              ) : msg.role === 'human_chairman' ? (
+                <div className="human-message">
+                  <div className="message-label">Human Chairman Feedback</div>
+                  <div className="message-content">
+                    <div className="markdown-content">
+                      <ReactMarkdown>{msg.feedback}</ReactMarkdown>
+                    </div>
+                  </div>
+                </div>
               ) : (
                 <div className="assistant-message">
-                  <div className="message-label">LLM Council</div>
+                  <div className="message-label">
+                    LLM Council {conversation.messages.filter(m => m.role === 'assistant').length > 1 ? `(Revision ${conversation.messages.filter((m, i) => m.role === 'assistant' && conversation.messages.indexOf(msg) >= i).length})` : ''}
+                  </div>
 
                   {/* Stage 1 */}
                   {msg.loading?.stage1 && (
@@ -104,13 +150,24 @@ export default function ChatInterface({
                     </div>
                   )}
                   {msg.stage3 && <Stage3 finalResponse={msg.stage3} />}
+
+                  {/* Stage 4 - Human Chairman Review */}
+                  {showStage4 && index === visibleMessages.length - 1 && (
+                    <Stage4
+                      humanFeedback={humanFeedback}
+                      setHumanFeedback={setHumanFeedback}
+                      onSubmit={() => onHumanFeedback(humanFeedback)}
+                      isLoading={isLoading}
+                      onCancel={() => setShowStage4(false)}
+                    />
+                  )}
                 </div>
               )}
             </div>
           ))
         )}
 
-        {isLoading && (
+        {isLoading && !showStage4 && (
           <div className="loading-indicator">
             <div className="spinner"></div>
             <span>Consulting the council...</span>
@@ -120,7 +177,7 @@ export default function ChatInterface({
         <div ref={messagesEndRef} />
       </div>
 
-      {conversation.messages.length === 0 && (
+      {conversation.messages.length === 0 && !showStage4 && (
         <form className="input-form" onSubmit={handleSubmit}>
           <textarea
             className="message-input"

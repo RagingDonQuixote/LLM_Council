@@ -13,3 +13,89 @@
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
 }
+
+.human-input-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.human-input-panel {
+  background: white;
+  padding: 30px;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 600px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.human-input-panel h3 {
+  margin: 0 0 10px 0;
+  color: #333;
+}
+
+.human-input-panel p {
+  margin: 0 0 20px 0;
+  color: #666;
+}
+
+.human-input-panel textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.human-input-controls {
+  margin-top: 20px;
+}
+
+.human-input-controls label {
+  display: block;
+  margin-bottom: 15px;
+  font-size: 14px;
+}
+
+.human-input-controls input[type="checkbox"] {
+  margin-right: 8px;
+}
+
+.human-input-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.human-input-buttons button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.human-input-buttons button:first-child {
+  background: #007bff;
+  color: white;
+}
+
+.human-input-buttons button:first-child:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.human-input-buttons button:last-child {
+  background: #6c757d;
+  color: white;
+}

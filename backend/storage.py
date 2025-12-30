@@ -64,6 +64,23 @@ def get_conversation(conversation_id: str) -> Optional[Dict[str, Any]]:
         return json.load(f)
 
 
+def delete_conversation(conversation_id: str) -> bool:
+    """
+    Delete a conversation.
+
+    Args:
+        conversation_id: Unique identifier for the conversation
+
+    Returns:
+        True if deleted, False if not found
+    """
+    path = get_conversation_path(conversation_id)
+    if os.path.exists(path):
+        os.remove(path)
+        return True
+    return False
+
+
 def save_conversation(conversation: Dict[str, Any]):
     """
     Save a conversation to storage.
@@ -94,11 +111,13 @@ def list_conversations() -> List[Dict[str, Any]]:
             with open(path, 'r') as f:
                 data = json.load(f)
                 # Return metadata only
+                assistant_messages = [m for m in data["messages"] if m.get("role") == "assistant"]
                 conversations.append({
                     "id": data["id"],
                     "created_at": data["created_at"],
                     "title": data.get("title", "New Conversation"),
-                    "message_count": len(data["messages"])
+                    "message_count": len(data["messages"]),
+                    "revision_count": len(assistant_messages)
                 })
 
     # Sort by creation time, newest first
@@ -169,4 +188,43 @@ def update_conversation_title(conversation_id: str, title: str):
         raise ValueError(f"Conversation {conversation_id} not found")
 
     conversation["title"] = title
+    save_conversation(conversation)
+
+
+def add_human_feedback(conversation_id: str, feedback: str, continue_discussion: bool):
+    """
+    Add human chairman feedback to a conversation.
+
+    Args:
+        conversation_id: Conversation identifier
+        feedback: Human feedback content
+        continue_discussion: Whether to continue the discussion
+    """
+    conversation = get_conversation(conversation_id)
+    if conversation is None:
+        raise ValueError(f"Conversation {conversation_id} not found")
+
+    conversation["messages"].append({
+        "role": "human_chairman",
+        "feedback": feedback,
+        "continue_discussion": continue_discussion
+    })
+
+    save_conversation(conversation)
+
+
+def end_session_with_rating(conversation_id: str, rating: int):
+    """
+    End the session with a rating.
+
+    Args:
+        conversation_id: Conversation identifier
+        rating: Rating from 0 to 5
+    """
+    conversation = get_conversation(conversation_id)
+    if conversation is None:
+        raise ValueError(f"Conversation {conversation_id} not found")
+
+    conversation["rating"] = rating
+    conversation["ended_at"] = datetime.utcnow().isoformat()
     save_conversation(conversation)

@@ -48,15 +48,32 @@
 .tab-content {
   background: #ffffff;
   padding: 16px;
-  border-radius: 6px;
-  border: 1px solid #e0e0e0;
+  border: 1px solid #d0d0d0;
+  border-radius: 0 6px 6px 6px;
+  margin-top: -1px;
+}
+
+.model-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #f0f0f0;
 }
 
 .model-name {
-  color: #888;
+  font-weight: 600;
+  color: #555;
+  font-size: 14px;
+}
+
+.token-usage {
   font-size: 12px;
-  margin-bottom: 12px;
-  font-family: monospace;
+  color: #888;
+  background: #f8f9fa;
+  padding: 2px 8px;
+  border-radius: 4px;
 }
 
 .response-text {

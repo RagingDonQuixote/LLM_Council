@@ -2,7 +2,7 @@
 
 from typing import List, Dict, Any, Tuple
 from .openrouter import query_models_parallel, query_model
-from .config import COUNCIL_MODELS, CHAIRMAN_MODEL
+from . import config
 
 
 async def stage1_collect_responses(user_query: str) -> List[Dict[str, Any]]:
@@ -15,18 +15,42 @@ async def stage1_collect_responses(user_query: str) -> List[Dict[str, Any]]:
     Returns:
         List of dicts with 'model' and 'response' keys
     """
-    messages = [{"role": "user", "content": user_query}]
+    current_config = config.get_config()
+    council_models = current_config["council_models"]
+    personalities = current_config.get("model_personalities", {})
+    timeout = current_config.get("response_timeout", 60)
+
+    # Create tasks for all models
+    tasks = []
+    for model in council_models:
+        personality = personalities.get(model, "Expert AI Assistant")
+        messages = [
+            {"role": "system", "content": f"You are a council member with the following personality: {personality}"},
+            {"role": "user", "content": user_query}
+        ]
+        tasks.append(query_model(model, messages, timeout=float(timeout)))
 
     # Query all models in parallel
-    responses = await query_models_parallel(COUNCIL_MODELS, messages)
+    import asyncio
+    responses_list = await asyncio.gather(*tasks)
+    responses = {model: resp for model, resp in zip(council_models, responses_list)}
 
     # Format results
     stage1_results = []
-    for model, response in responses.items():
-        if response is not None:  # Only include successful responses
+    for model, response in zip(council_models, responses_list):
+        if response is not None:
             stage1_results.append({
                 "model": model,
-                "response": response.get('content', '')
+                "response": response.get('content', ''),
+                "usage": response.get('usage', {})
+            })
+        else:
+            # Include a placeholder for failed models so they don't just disappear
+            stage1_results.append({
+                "model": model,
+                "response": "Error: This model failed to respond or timed out.",
+                "usage": {"total_tokens": 0},
+                "error": True
             })
 
     return stage1_results
@@ -71,35 +95,48 @@ Here are the responses from different models (anonymized):
 
 Your task:
 1. First, evaluate each response individually. For each response, explain what it does well and what it does poorly.
-2. Then, at the very end of your response, provide a final ranking.
+2. Then, at the very end of your response, provide a final ranking of ALL {len(stage1_results)} responses.
 
 IMPORTANT: Your final ranking MUST be formatted EXACTLY as follows:
 - Start with the line "FINAL RANKING:" (all caps, with colon)
 - Then list the responses from best to worst as a numbered list
 - Each line should be: number, period, space, then ONLY the response label (e.g., "1. Response A")
+- You MUST rank EVERY SINGLE response provided above (from A to {labels[-1]}) - do not skip any!
 - Do not add any other text or explanations in the ranking section
 
-Example of the correct format for your ENTIRE response:
-
-Response A provides good detail on X but misses Y...
-Response B is accurate but lacks depth on Z...
-Response C offers the most comprehensive answer...
+Example of the correct format for your FINAL RANKING section (if there are 3 responses):
 
 FINAL RANKING:
 1. Response C
 2. Response A
 3. Response B
 
-Now provide your evaluation and ranking:"""
+Now provide your evaluation and ranking of ALL {len(stage1_results)} responses:"""
 
-    messages = [{"role": "user", "content": ranking_prompt}]
+    messages_base = [{"role": "user", "content": ranking_prompt}]
+
+    current_config = config.get_config()
+    council_models = current_config["council_models"]
+    personalities = current_config.get("model_personalities", {})
+
+    # Create tasks for all models
+    tasks = []
+    for model in council_models:
+        personality = personalities.get(model, "Expert AI Assistant")
+        messages = [
+            {"role": "system", "content": f"You are a council member with the following personality: {personality}. Your task is to rank the responses of your peers."},
+            {"role": "user", "content": ranking_prompt}
+        ]
+        tasks.append(query_model(model, messages))
 
     # Get rankings from all council models in parallel
-    responses = await query_models_parallel(COUNCIL_MODELS, messages)
+    import asyncio
+    responses_list = await asyncio.gather(*tasks)
+    responses = {model: resp for model, resp in zip(council_models, responses_list)}
 
     # Format results
     stage2_results = []
-    for model, response in responses.items():
+    for model, response in zip(council_models, responses_list):
         if response is not None:
             full_text = response.get('content', '')
             parsed = parse_ranking_from_text(full_text)
@@ -158,18 +195,21 @@ Provide a clear, well-reasoned final answer that represents the council's collec
 
     messages = [{"role": "user", "content": chairman_prompt}]
 
+    current_config = config.get_config()
+    chairman_model = current_config["chairman_model"]
+
     # Query the chairman model
-    response = await query_model(CHAIRMAN_MODEL, messages)
+    response = await query_model(chairman_model, messages)
 
     if response is None:
         # Fallback if chairman fails
         return {
-            "model": CHAIRMAN_MODEL,
+            "model": chairman_model,
             "response": "Error: Unable to generate final synthesis."
         }
 
     return {
-        "model": CHAIRMAN_MODEL,
+        "model": chairman_model,
         "response": response.get('content', '')
     }
 
@@ -192,20 +232,34 @@ def parse_ranking_from_text(ranking_text: str) -> List[str]:
         parts = ranking_text.split("FINAL RANKING:")
         if len(parts) >= 2:
             ranking_section = parts[1]
-            # Try to extract numbered list format (e.g., "1. Response A")
-            # This pattern looks for: number, period, optional space, "Response X"
-            numbered_matches = re.findall(r'\d+\.\s*Response [A-Z]', ranking_section)
+            
+            # 1. Try to find "Response X" format
+            numbered_matches = re.findall(r'\d+\.\s*Response ([A-Z])', ranking_section)
             if numbered_matches:
-                # Extract just the "Response X" part
-                return [re.search(r'Response [A-Z]', m).group() for m in numbered_matches]
+                return [f"Response {m}" for m in numbered_matches]
+            
+            # 2. Try to find just "X" after a number (e.g., "1. A")
+            short_matches = re.findall(r'\d+\.\s*([A-Z])(?:\s|$)', ranking_section)
+            if short_matches:
+                return [f"Response {m}" for m in short_matches]
+                
+            # 3. Try to find any "Response X" patterns in order
+            matches = re.findall(r'Response ([A-Z])', ranking_section)
+            if matches:
+                return [f"Response {m}" for m in matches]
 
-            # Fallback: Extract all "Response X" patterns in order
-            matches = re.findall(r'Response [A-Z]', ranking_section)
-            return matches
-
-    # Fallback: try to find any "Response X" patterns in order
-    matches = re.findall(r'Response [A-Z]', ranking_text)
-    return matches
+    # Fallback: try to find any "Response X" patterns anywhere in the text
+    matches = re.findall(r'Response ([A-Z])', ranking_text)
+    if matches:
+        return [f"Response {m}" for m in matches]
+        
+    # Last resort: find any capital letters A-F that look like they might be rankings
+    # (Only if we have a reasonable number of them)
+    last_resort = re.findall(r'(?:\d+\.\s*|Ranking:\s*|Best:\s*)([A-F])', ranking_text)
+    if last_resort:
+        return [f"Response {m}" for m in last_resort]
+        
+    return []
 
 
 def calculate_aggregate_rankings(
@@ -274,8 +328,8 @@ Title:"""
 
     messages = [{"role": "user", "content": title_prompt}]
 
-    # Use gemini-2.5-flash for title generation (fast and cheap)
-    response = await query_model("google/gemini-2.5-flash", messages, timeout=30.0)
+    # Use gemini-2.0-flash-001 for title generation (fast and cheap)
+    response = await query_model("google/gemini-2.0-flash-001", messages, timeout=30.0)
 
     if response is None:
         # Fallback to a generic title
@@ -313,18 +367,24 @@ async def run_full_council(user_query: str) -> Tuple[List, List, Dict, Dict]:
             "response": "All models failed to respond. Please try again."
         }, {}
 
+    # Check if we have at least 1 result
+    print(f"DEBUG: Stage 1 complete with {len(stage1_results)} results")
+
     # Stage 2: Collect rankings
     stage2_results, label_to_model = await stage2_collect_rankings(user_query, stage1_results)
+    print(f"DEBUG: Stage 2 complete with {len(stage2_results)} rankings")
 
     # Calculate aggregate rankings
     aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
 
     # Stage 3: Synthesize final answer
+    print(f"DEBUG: Starting Stage 3...")
     stage3_result = await stage3_synthesize_final(
         user_query,
         stage1_results,
         stage2_results
     )
+    print(f"DEBUG: Stage 3 complete")
 
     # Prepare metadata
     metadata = {

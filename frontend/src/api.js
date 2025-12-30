@@ -47,6 +47,35 @@ export const api = {
   },
 
   /**
+   * Test model latency.
+   */
+  async testLatency(modelId) {
+    const response = await fetch(
+      `${API_BASE}/api/test-latency/${encodeURIComponent(modelId)}`
+    );
+    if (!response.ok) {
+      throw new Error('Failed to test latency');
+    }
+    return response.json();
+  },
+
+  /**
+   * Delete a conversation.
+   */
+  async deleteConversation(conversationId) {
+    const response = await fetch(
+      `${API_BASE}/api/conversations/${conversationId}`,
+      {
+        method: 'DELETE',
+      }
+    );
+    if (!response.ok) {
+      throw new Error('Failed to delete conversation');
+    }
+    return response.json();
+  },
+
+  /**
    * Send a message in a conversation.
    */
   async sendMessage(conversationId, content) {
@@ -111,5 +140,78 @@ export const api = {
         }
       }
     }
+  },
+
+  /**
+   * Get current council configuration.
+   */
+  async getConfig() {
+    const response = await fetch(`${API_BASE}/api/config`);
+    if (!response.ok) {
+      throw new Error('Failed to get config');
+    }
+    return response.json();
+  },
+
+  /**
+   * Update council configuration.
+   */
+  async updateConfig(config) {
+    const response = await fetch(`${API_BASE}/api/config`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(config),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to update config');
+    }
+    return response.json();
+  },
+
+  /**
+   * Get available models.
+   */
+  async getAvailableModels() {
+    const response = await fetch(`${API_BASE}/api/available-models`);
+    if (!response.ok) {
+      throw new Error('Failed to get available models');
+    }
+    return response.json();
+  },
+
+  /**
+   * Submit human chairman feedback.
+   */
+  async submitHumanFeedback(conversationId, feedback, continueDiscussion) {
+    const response = await fetch(`${API_BASE}/api/conversations/${conversationId}/human-feedback`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ feedback, continue_discussion: continueDiscussion }),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to submit feedback');
+    }
+    return response.json();
+  },
+
+  /**
+   * End session with rating.
+   */
+  async endSession(conversationId, rating) {
+    const response = await fetch(`${API_BASE}/api/conversations/${conversationId}/end-session`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ rating }),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to end session');
+    }
+    return response.json();
   },
 };

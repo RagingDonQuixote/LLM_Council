@@ -26,7 +26,15 @@ export default function Stage1({ responses }) {
       </div>
 
       <div className="tab-content">
-        <div className="model-name">{responses[activeTab].model}</div>
+        <div className="model-info">
+          <div className="model-name">{responses[activeTab].model}</div>
+          {responses[activeTab].usage && (
+            <div className="token-usage">
+              Tokens: {responses[activeTab].usage.total_tokens || 0} 
+              (P: {responses[activeTab].usage.prompt_tokens || 0} / C: {responses[activeTab].usage.completion_tokens || 0})
+            </div>
+          )}
+        </div>
         <div className="response-text markdown-content">
           <ReactMarkdown>{responses[activeTab].response}</ReactMarkdown>
         </div>
