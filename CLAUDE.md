@@ -33,7 +33,7 @@ LLM Council is a 3-stage deliberation system where multiple LLMs collaboratively
   - Each ranking includes both raw text and `parsed_ranking` list
 - `stage3_synthesize_final()`: Chairman decides to finalize or continue negotiation. 
   - Returns JSON with `action` (`FINAL_ANSWER` or `CONTINUE_NEGOTIATION`), `reasoning`, and `new_instruction`.
-  - v1.2.4: Improved system prompt with a "Completeness Check" to ensure the original user query is fully addressed before finalizing.
+  - v1.2.6: Improved robustness in decision making and context handling for multi-step tasks.
 - `run_full_council()`: Orchestrates the multi-round loop (max 3 rounds). Collects results from all stages in each round.
 - `parse_ranking_from_text()`: Extracts "FINAL RANKING:" section, handles both numbered lists and plain format
 - `calculate_aggregate_rankings()`: Computes average rank position across all peer evaluations
@@ -43,14 +43,15 @@ LLM Council is a 3-stage deliberation system where multiple LLMs collaboratively
 - Each conversation: `{id, created_at, messages[], metadata}`
 - Assistant messages contain: `{role, stage1, stage2, stage3}`
 - Metadata stores `revision_count` and other session-level info.
+- Human feedback is stored with `role: "human_chairman"` and `content` key for consistency.
 
 **`main.py`**
 - FastAPI app with CORS enabled for localhost:5173 and localhost:3000
 - POST `/api/conversations/{id}/message`: Main entry point for starting a council session. Supports streaming via SSE.
-- POST `/api/conversations/{conversation_id}/feedback` (v1.2.4): 
-  - Allows human chairman to intervene.
-  - Automatically identifies the original user query to maintain context.
-  - Triggers a new council round with the human feedback incorporated.
+- POST `/api/conversations/{conversation_id}/human-feedback` (v1.2.6): 
+  - Allows human chairman to intervene via SSE streaming.
+  - Automatically identifies the original user query to maintain context across revisions.
+  - Robust against `KeyError` when parsing message history with mixed message types.
 
 ### Frontend Structure (`frontend/src/`)
 
