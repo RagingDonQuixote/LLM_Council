@@ -23,29 +23,34 @@ LLM Council is a 3-stage deliberation system where multiple LLMs collaboratively
 - Graceful degradation: returns None on failure, continues with successful responses
 
 **`council.py`** - The Core Logic
-- `stage0_analyze_and_plan()` (v1.2): Initial task analysis to detect consensus needs
-- `stage1_collect_responses()`: Parallel queries to all council models (now accepts Chairman instructions)
+- `stage0_analyze_and_plan()` (v1.2+): Initial task analysis to detect consensus needs. Returns a plan with `requires_consensus` flag.
+- `stage1_collect_responses()`: Parallel queries to all council models. Now accepts optional `instruction` from the Chairman to guide responses during negotiation rounds.
 - `stage2_collect_rankings()`:
   - Anonymizes responses as "Response A, B, C, etc."
   - Creates `label_to_model` mapping for de-anonymization
   - Prompts models to evaluate and rank (with strict format requirements)
   - Returns tuple: (rankings_list, label_to_model_dict)
   - Each ranking includes both raw text and `parsed_ranking` list
-- `stage3_synthesize_final()`: Chairman decides to finalize or continue negotiation (returns JSON with `action`)
-- `run_full_council()`: Orchestrates the multi-round loop (max 3 rounds)
+- `stage3_synthesize_final()`: Chairman decides to finalize or continue negotiation. 
+  - Returns JSON with `action` (`FINAL_ANSWER` or `CONTINUE_NEGOTIATION`), `reasoning`, and `new_instruction`.
+  - v1.2.4: Improved system prompt with a "Completeness Check" to ensure the original user query is fully addressed before finalizing.
+- `run_full_council()`: Orchestrates the multi-round loop (max 3 rounds). Collects results from all stages in each round.
 - `parse_ranking_from_text()`: Extracts "FINAL RANKING:" section, handles both numbered lists and plain format
 - `calculate_aggregate_rankings()`: Computes average rank position across all peer evaluations
 
 **`storage.py`**
 - JSON-based conversation storage in `data/conversations/`
-- Each conversation: `{id, created_at, messages[]}`
+- Each conversation: `{id, created_at, messages[], metadata}`
 - Assistant messages contain: `{role, stage1, stage2, stage3}`
-- Note: metadata (label_to_model, aggregate_rankings) is NOT persisted to storage, only returned via API
+- Metadata stores `revision_count` and other session-level info.
 
 **`main.py`**
 - FastAPI app with CORS enabled for localhost:5173 and localhost:3000
-- POST `/api/conversations/{id}/message` returns metadata in addition to stages
-- Metadata includes: label_to_model mapping and aggregate_rankings
+- POST `/api/conversations/{id}/message`: Main entry point for starting a council session. Supports streaming via SSE.
+- POST `/api/conversations/{conversation_id}/feedback` (v1.2.4): 
+  - Allows human chairman to intervene.
+  - Automatically identifies the original user query to maintain context.
+  - Triggers a new council round with the human feedback incorporated.
 
 ### Frontend Structure (`frontend/src/`)
 
