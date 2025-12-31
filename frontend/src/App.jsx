@@ -18,12 +18,34 @@ function App() {
   const [showTerminal, setShowTerminal] = useState(false);
   const [terminalLogs, setTerminalLogs] = useState([]);
   const [humanFeedback, setHumanFeedback] = useState('');
+  const [councilConfig, setCouncilConfig] = useState(null);
+  const [modelsMetadata, setModelsMetadata] = useState({});
 
-  // Load conversations on mount
+  // Load initial data on mount
   useEffect(() => {
     loadConversations();
     loadVersion();
+    loadCouncilStatus();
   }, []);
+
+  const loadCouncilStatus = async () => {
+    try {
+      const config = await api.getConfig();
+      setCouncilConfig(config);
+      
+      const allModelIds = [...config.council_models];
+      if (config.chairman_model && !allModelIds.includes(config.chairman_model)) {
+        allModelIds.push(config.chairman_model);
+      }
+      
+      if (allModelIds.length > 0) {
+        const metadata = await api.getModelsMetadata(allModelIds);
+        setModelsMetadata(metadata);
+      }
+    } catch (error) {
+      console.error('Failed to load council status:', error);
+    }
+  };
 
   const loadVersion = async () => {
     try {
@@ -67,9 +89,23 @@ function App() {
     }
   };
 
-  const handleDeleteConversation = async (id) => {
+  const handleArchiveConversation = async (id) => {
     try {
-      await api.deleteConversation(id);
+      await api.archiveConversation(id);
+      setConversations(conversations.filter((c) => c.id !== id));
+      if (currentConversationId === id) {
+        setCurrentConversationId(null);
+        setCurrentConversation(null);
+      }
+    } catch (error) {
+      console.error('Failed to archive conversation:', error);
+      alert('Failed to archive conversation');
+    }
+  };
+
+  const handleDeleteConversationPermanent = async (id) => {
+    try {
+      await api.deleteConversationPermanent(id);
       setConversations(conversations.filter((c) => c.id !== id));
       if (currentConversationId === id) {
         setCurrentConversationId(null);
@@ -110,15 +146,16 @@ function App() {
 
   const handleCloseSettings = () => {
     setShowSettings(false);
+    loadCouncilStatus(); // Refresh council status after settings change
   };
 
-  const handleHumanFeedbackSubmit = async (continueDiscussion) => {
+  const handleHumanFeedbackSubmit = async (continueDiscussion, rating) => {
     if (!currentConversationId) return;
 
     setIsLoading(true);
     if (continueDiscussion) {
       setShowTerminal(true);
-      setTerminalLogs(['Initiating Council stream with feedback...']);
+      setTerminalLogs(prev => [...prev, '--- STARTING REVISION ROUND ---', `Human Feedback: ${humanFeedback}`, 'Initiating Council stream with feedback...']);
       
       try {
         // Optimistically add user message (the feedback)
@@ -222,7 +259,7 @@ function App() {
     } else {
       try {
         await api.submitHumanFeedback(currentConversationId, humanFeedback);
-        handleEndSession();
+        handleEndSession(rating);
         setShowStage4(false);
         setHumanFeedback('');
       } catch (error) {
@@ -233,21 +270,15 @@ function App() {
     }
   };
 
-  const handleEndSession = () => {
-    const rating = prompt('Please rate this council session (0-5 stars):', '5');
-    if (rating !== null) {
-      const numRating = parseInt(rating);
-      if (numRating >= 0 && numRating <= 5) {
-        api.endSession(currentConversationId, numRating).then(() => {
-          alert('Session ended. Thank you for your feedback!');
-          loadConversations();
-        });
-      }
-    }
+  const handleEndSession = (rating) => {
+    const finalRating = rating || 5;
+    api.endSession(currentConversationId, finalRating).then(() => {
+      loadConversations();
+    });
   };
 
-  const handleStage4Submit = (continueDiscussion) => {
-    handleHumanFeedbackSubmit(continueDiscussion);
+  const handleStage4Submit = (continueDiscussion, rating) => {
+    handleHumanFeedbackSubmit(continueDiscussion, rating);
   };
 
   const handleStage4Cancel = () => {
@@ -256,140 +287,39 @@ function App() {
   };
 
   const handleSendMessage = async (content) => {
-    if (!currentConversationId) return;
+    if (!currentConversation) return;
 
     setIsLoading(true);
-    setShowTerminal(true);
-    setTerminalLogs(['Initiating Council stream...']);
+    setTerminalLogs([]); // Clear logs for new message
+    
     try {
-      // Optimistically add user message to UI
-      const userMessage = { role: 'user', content };
-      setCurrentConversation((prev) => ({
-        ...prev,
-        messages: [...prev.messages, userMessage],
-      }));
-
-      // Create a partial assistant message that will be updated progressively
-      const assistantMessage = {
-        role: 'assistant',
-        stage1: null,
-        stage2: null,
-        stage3: null,
-        stage4: null,
-        metadata: null,
-        loading: {
-          stage1: false,
-          stage2: false,
-          stage3: false,
-          stage4: false,
-        },
-      };
-
-      // Add the partial assistant message
-      setCurrentConversation((prev) => ({
-        ...prev,
-        messages: [...prev.messages, assistantMessage],
-      }));
-
-      // Send message with streaming
-      await api.sendMessageStream(currentConversationId, content, (eventType, event) => {
-        switch (eventType) {
-          case 'log':
-            setTerminalLogs(prev => [...prev, event.message]);
-            break;
-          case 'stage1_start':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.loading.stage1 = true;
-              return { ...prev, messages };
-            });
-            break;
-
-          case 'stage1_complete':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.stage1 = event.data;
-              lastMsg.loading.stage1 = false;
-              return { ...prev, messages };
-            });
-            break;
-
-          case 'stage2_start':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.loading.stage2 = true;
-              return { ...prev, messages };
-            });
-            break;
-
-          case 'stage2_complete':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.stage2 = event.data;
-              lastMsg.metadata = event.metadata;
-              lastMsg.loading.stage2 = false;
-              return { ...prev, messages };
-            });
-            break;
-
-          case 'stage3_start':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.loading.stage3 = true;
-              return { ...prev, messages };
-            });
-            break;
-
-          case 'stage3_complete':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.stage3 = event.data;
-              lastMsg.loading.stage3 = false;
-              return { ...prev, messages };
-            });
-            break;
-
-          case 'human_input_required':
-            // Show Stage 4 instead of modal
-            setShowStage4(true);
-            setIsLoading(false);
-            break;
-
-          case 'title_complete':
-            // Reload conversations to get updated title
-            loadConversations();
-            break;
-
-          case 'complete':
-            // Stream complete, reload conversations list
-            setTerminalLogs(prev => [...prev, '--- SESSION COMPLETE ---']);
-            loadConversations();
-            setIsLoading(false);
-            break;
-
-          case 'error':
-            console.error('Stream error:', event.message);
-            setTerminalLogs(prev => [...prev, `ERROR: ${event.message}`]);
-            setIsLoading(false);
-            break;
-
-          default:
-            console.log('Unknown event type:', eventType);
+      await api.sendMessage(currentConversation.id, content, (event) => {
+        if (event.type === 'log') {
+          setTerminalLogs(prev => [...prev, `[COUNCIL] ${event.message}`]);
+        } else if (event.type === 'session_state') {
+          // Update conversation with new blueprint/session state
+          setCurrentConversation(prev => ({
+            ...prev,
+            session_state: event.data
+          }));
+        } else if (event.type === 'stage1_start') {
+          // Handle stage start if needed
+        } else if (event.type === 'stage1_complete') {
+          // We'll update the full conversation at the end
+        } else if (event.type === 'human_input_required') {
+          setShowStage4(true);
+        } else if (event.type === 'complete') {
+          // Final fetch to get the full updated conversation
+          loadConversation(currentConversation.id);
+          setIsLoading(false);
+        } else if (event.type === 'error') {
+          setTerminalLogs(prev => [...prev, `[ERROR] ${event.message}`]);
+          setIsLoading(false);
         }
       });
     } catch (error) {
       console.error('Failed to send message:', error);
-      // Remove optimistic messages on error
-      setCurrentConversation((prev) => ({
-        ...prev,
-        messages: prev.messages.slice(0, -2),
-      }));
+      setTerminalLogs(prev => [...prev, `[ERROR] ${error.message}`]);
       setIsLoading(false);
     }
   };
@@ -402,9 +332,12 @@ function App() {
           activeRevision={activeRevision}
           onSelectConversation={handleSelectConversation}
           onNewConversation={handleNewConversation}
-          onDeleteConversation={handleDeleteConversation}
+          onArchiveConversation={handleArchiveConversation}
+          onDeleteConversation={handleDeleteConversationPermanent}
           onOpenSettings={handleOpenSettings}
           versionInfo={versionInfo}
+          councilConfig={councilConfig}
+          modelsMetadata={modelsMetadata}
         />
       <ChatInterface
         conversation={currentConversation}
@@ -417,7 +350,10 @@ function App() {
         onStage4Submit={handleStage4Submit}
         onStage4Cancel={handleStage4Cancel}
         isLoadingStage4={isLoading}
-      />
+         currentConfig={councilConfig}
+         onOpenSettings={handleOpenSettings}
+         modelsMetadata={modelsMetadata}
+       />
       <RetroTerminal 
         logs={terminalLogs} 
         isVisible={showTerminal} 

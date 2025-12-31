@@ -20,18 +20,37 @@
   line-height: 1.5;
 }
 
-.aggregate-rankings {
-  background: #f0f7ff;
-  padding: 16px;
+.collapsible-section {
+  margin-bottom: 12px;
+  border: 1px solid #e0e0e0;
   border-radius: 8px;
-  margin-bottom: 20px;
-  border: 2px solid #d0e7ff;
+  overflow: hidden;
+  background: #fff;
 }
 
-.aggregate-rankings h4 {
-  margin: 0 0 12px 0;
-  color: #2a7ae2;
-  font-size: 15px;
+.section-header {
+  padding: 12px 16px;
+  background: #f8f9fa;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background 0.2s;
+}
+
+.section-header:hover {
+  background: #f0f0f0;
+}
+
+.section-header h4 {
+  margin: 0 !important;
+  font-size: 14px;
+  color: #333;
+}
+
+.section-content {
+  padding: 16px;
+  border-top: 1px solid #e0e0e0;
 }
 
 .aggregate-list {

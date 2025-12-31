@@ -92,7 +92,7 @@ export default function RetroTerminal({ logs, isVisible, onClose }) {
           <div className="terminal-content">
             {logs.map((log, i) => (
               <div key={i} className="terminal-line">
-                <span className="prompt">C:\></span> {log}
+                <span className="prompt">C:\COUNCIL&gt;</span> {log}
               </div>
             ))}
             <div className="terminal-cursor">_</div>

@@ -23,7 +23,9 @@ DEFAULT_CONFIG = {
         "nvidia/nemotron-nano-12b-v2-vl:free", # NVIDIA free vision+language
     ],
     "chairman_model": "z-ai/glm-4.5-air:free",
+    "consensus_strategy": "borda",
     "response_timeout": 60,  # Default timeout in seconds
+    "substitute_models": {},
     "model_personalities": {
         "xiaomi/mimo-v2-flash:free": "Fast multimodal reasoning",
         "tngtech/deepseek-r1t2-chimera:free": "Deep analytical reasoning",
@@ -38,6 +40,7 @@ OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # Data directory for conversation storage
 DATA_DIR = "data/conversations"
+DB_PATH = "D:/DB_LLM_Council/council.db"
 
 def load_config():
     """Load configuration from file or return defaults."""

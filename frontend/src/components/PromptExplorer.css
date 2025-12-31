@@ -1,0 +1,260 @@
+.prompt-explorer {
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: all 0.3s ease;
+  max-height: 400px;
+}
+
+.prompt-explorer.fullscreen {
+  max-height: 800px;
+}
+
+.explorer-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #fcfcfc;
+}
+
+.explorer-title h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #333;
+}
+
+.explorer-title .count {
+  font-size: 12px;
+  color: #888;
+}
+
+.explorer-controls {
+  display: flex;
+  gap: 15px;
+  align-items: center;
+}
+
+.search-input {
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+  width: 200px;
+}
+
+.view-toggles {
+  display: flex;
+  background: #eee;
+  padding: 2px;
+  border-radius: 6px;
+}
+
+.view-toggles button {
+  background: transparent;
+  border: none;
+  padding: 4px 10px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 16px;
+  color: #666;
+}
+
+.view-toggles button.active {
+  background: white;
+  color: #007bff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.filter-bar {
+  padding: 12px 20px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.tags-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag-pill {
+  background: white;
+  border: 1px solid #ddd;
+  padding: 4px 12px;
+  border-radius: 15px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tag-pill:hover {
+  border-color: #007bff;
+  color: #007bff;
+}
+
+.tag-pill.active {
+  background: #007bff;
+  border-color: #007bff;
+  color: white;
+}
+
+.logic-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logic-toggle .label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+}
+
+.logic-toggle button {
+  background: #eee;
+  border: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.logic-toggle button.active {
+  background: #333;
+  color: white;
+}
+
+.prompts-container {
+  padding: 20px;
+  overflow-y: auto;
+  flex-grow: 1;
+}
+
+.prompts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 20px;
+}
+
+.prompts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.explorer-card {
+  background: white;
+  border: 1px solid #eee;
+  border-radius: 10px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.explorer-card:hover {
+  border-color: #007bff;
+  box-shadow: 0 4px 12px rgba(0,123,255,0.1);
+  transform: translateY(-2px);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.card-header h4 {
+  margin: 0;
+  font-size: 15px;
+  color: #333;
+}
+
+.card-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.card-meta .stars {
+  color: #ffc107;
+  font-size: 12px;
+}
+
+.card-meta .usage {
+  font-size: 11px;
+  color: #888;
+}
+
+.explorer-card .preview {
+  font-size: 13px;
+  color: #666;
+  margin: 0;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.tag-mini {
+  font-size: 10px;
+  background: #f0f0f0;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #666;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.use-hint {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  font-size: 11px;
+  color: #007bff;
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.explorer-card:hover .use-hint {
+  opacity: 1;
+}
+
+.no-prompts {
+  text-align: center;
+  padding: 40px;
+  color: #888;
+}
+
+.prompt-explorer-loading {
+  padding: 40px;
+  text-align: center;
+  color: #888;
+  background: #f9f9f9;
+  border-radius: 12px;
+  border: 1px dashed #ddd;
+}

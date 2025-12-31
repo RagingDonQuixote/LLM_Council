@@ -9,6 +9,11 @@ export default function Stage4({
   onCancel 
 }) {
   const [continueDiscussion, setContinueDiscussion] = useState(false);
+  const [rating, setRating] = useState(5);
+
+  const handleSubmit = () => {
+    onSubmit(continueDiscussion, rating);
+  };
 
   return (
     <div className="stage stage4">
@@ -25,18 +30,37 @@ export default function Stage4({
         />
         
         <div className="feedback-controls">
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={continueDiscussion}
-              onChange={(e) => setContinueDiscussion(e.target.checked)}
-            />
-            Continue discussion (rerun council with feedback)
-          </label>
+          <div className="control-group">
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={continueDiscussion}
+                onChange={(e) => setContinueDiscussion(e.target.checked)}
+              />
+              Continue discussion (rerun council with feedback)
+            </label>
+          </div>
+
+          {!continueDiscussion && (
+            <div className="control-group rating-group">
+              <label>Session Rating:</label>
+              <div className="stars">
+                {[1, 2, 3, 4, 5].map((s) => (
+                  <span 
+                    key={s} 
+                    className={`star ${rating >= s ? 'active' : ''}`}
+                    onClick={() => setRating(s)}
+                  >
+                    ★
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
           
           <div className="feedback-buttons">
             <button 
-              onClick={() => onSubmit(continueDiscussion)} 
+              onClick={handleSubmit} 
               disabled={isLoading}
               className="btn btn-primary"
             >

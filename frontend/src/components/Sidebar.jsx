@@ -7,15 +7,38 @@ export default function Sidebar({
   activeRevision,
   onSelectConversation,
   onNewConversation,
+  onArchiveConversation,
   onDeleteConversation,
   onOpenSettings,
   versionInfo,
+  councilConfig,
+  modelsMetadata,
 }) {
-  const handleDeleteClick = async (e, id) => {
+  const [showCouncilStatus, setShowCouncilStatus] = useState(true);
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+
+  const formatPrice = (price) => {
+    if (!price || price === 0) return 'Free';
+    return `$${(price * 1000000).toFixed(1)}/1M`;
+  };
+
+  const getModelShortName = (modelId) => {
+    return modelId.split('/')[1] || modelId;
+  };
+
+  const handleDeleteClick = (e, id) => {
     e.stopPropagation();
-    if (confirm('Are you sure you want to delete this conversation?')) {
-      await onDeleteConversation(id);
-    }
+    setDeleteConfirmId(id);
+  };
+
+  const confirmArchive = async () => {
+    await onArchiveConversation(deleteConfirmId);
+    setDeleteConfirmId(null);
+  };
+
+  const confirmDelete = async () => {
+    await onDeleteConversation(deleteConfirmId);
+    setDeleteConfirmId(null);
   };
 
   const handleCopyPrompt = (e, conversation) => {
@@ -59,6 +82,26 @@ export default function Sidebar({
           </button>
         </div>
       </div>
+
+      {deleteConfirmId && (
+        <div className="delete-modal-overlay" onClick={() => setDeleteConfirmId(null)}>
+          <div className="delete-modal" onClick={e => e.stopPropagation()}>
+            <h3>Lösch-Optionen</h3>
+            <p>Was möchten Sie mit dieser Konversation tun?</p>
+            <div className="delete-modal-buttons">
+              <button className="archive-btn" onClick={confirmArchive}>
+                📦 Ins Archiv verschieben (inkl. Logs)
+              </button>
+              <button className="permanent-delete-btn" onClick={confirmDelete}>
+                🗑️ Endgültig löschen (inkl. Logs)
+              </button>
+              <button className="cancel-btn" onClick={() => setDeleteConfirmId(null)}>
+                Abbrechen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="conversation-list">
         {conversations.length === 0 ? (
@@ -118,6 +161,49 @@ export default function Sidebar({
               </div>
             </div>
           ))
+        )}
+      </div>
+
+      <div className="sidebar-footer">
+        <div 
+          className="council-status-header" 
+          onClick={() => setShowCouncilStatus(!showCouncilStatus)}
+        >
+          <span>Council Status {showCouncilStatus ? '▼' : '▲'}</span>
+          <span className="strategy-badge">{councilConfig?.consensus_strategy === 'chairman_cut' ? 'Chairman-Cut' : 'Borda'}</span>
+        </div>
+
+        {showCouncilStatus && councilConfig && (
+          <div className="council-status-content">
+            <div className="status-section">
+              <div className="status-label">Council Members</div>
+              <div className="status-models">
+                {councilConfig.council_models.map(modelId => {
+                  const meta = modelsMetadata[modelId];
+                  return (
+                    <div key={modelId} className="status-model-item" title={modelId}>
+                      <span className="model-short-name">{getModelShortName(modelId)}</span>
+                      <div className="model-stats">
+                        <span className="price-tag">{formatPrice(meta?.pricing?.prompt)}</span>
+                        {meta?.description?.toLowerCase().includes('thinking') && <span className="stat-cap" title="Thinking">🧠</span>}
+                        {meta?.description?.toLowerCase().includes('tool') && <span className="stat-cap" title="Tools">🛠️</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="status-section">
+              <div className="status-label">Chairman</div>
+              <div className="status-model-item chairman" title={councilConfig.chairman_model}>
+                <span className="model-short-name">{getModelShortName(councilConfig.chairman_model)}</span>
+                <div className="model-stats">
+                  <span className="price-tag">{formatPrice(modelsMetadata[councilConfig.chairman_model]?.pricing?.prompt)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>
