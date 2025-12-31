@@ -54,6 +54,13 @@ Dieses Dokument dient als Leitfaden zur manuellen und automatisierten Prüfung d
 - [x] **Resizable Panels**: Lassen sich die Spalten (Chat, Blueprint, Resources) in der Breite verändern? (In ChatInterface.jsx via Mouse-Events implementiert)
 - [x] **Human Feedback**: Wird Feedback des Human Chair im Chat-Verlauf korrekt als "Human Chairman Feedback" formatiert angezeigt? (In ChatInterface.jsx verifiziert)
 
+## 8. WorkArea & Dock (v1.30)
+- [x] **Dock-Sichtbarkeit**: Bleibt das Dock im Vordergrund (Z-Index) und wird nicht abgeschnitten?
+- [x] **Orientierung**: Funktioniert der Wechsel zwischen horizontaler und vertikaler Ausrichtung?
+- [x] **Minimierung**: Verschwinden Kacheln beim Minimieren komplett und lassen sich nur über das Dock wiederherstellen?
+- [x] **Persistence**: Werden Position und Größe der Kacheln im LocalStorage gespeichert und beim Neuladen korrekt angewendet?
+- [x] **IBM Terminal**: Erscheint das Retro-Terminal automatisch beim Start eines Council-Workflows?
+
 ---
 *Zuletzt aktualisiert am: 2025-12-31*
-*Status: Abgeschlossen (Alle Kernfunktionen verifiziert)*
+*Status: Abgeschlossen (Version 1.30 verifiziert)*

@@ -1,74 +1,9 @@
 .prompt-explorer {
   background: white;
-  border: 1px solid #ddd;
-  border-radius: 12px;
-  margin-bottom: 20px;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  transition: all 0.3s ease;
-  max-height: 400px;
-}
-
-.prompt-explorer.fullscreen {
-  max-height: 800px;
-}
-
-.explorer-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid #eee;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: #fcfcfc;
-}
-
-.explorer-title h3 {
-  margin: 0;
-  font-size: 18px;
-  color: #333;
-}
-
-.explorer-title .count {
-  font-size: 12px;
-  color: #888;
-}
-
-.explorer-controls {
-  display: flex;
-  gap: 15px;
-  align-items: center;
-}
-
-.search-input {
-  padding: 8px 12px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  font-size: 14px;
-  width: 200px;
-}
-
-.view-toggles {
-  display: flex;
-  background: #eee;
-  padding: 2px;
-  border-radius: 6px;
-}
-
-.view-toggles button {
-  background: transparent;
-  border: none;
-  padding: 4px 10px;
-  cursor: pointer;
-  border-radius: 4px;
-  font-size: 16px;
-  color: #666;
-}
-
-.view-toggles button.active {
-  background: white;
-  color: #007bff;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  height: 100%;
+  width: 100%;
 }
 
 .filter-bar {
@@ -76,10 +11,34 @@
   background: #f8f9fa;
   border-bottom: 1px solid #eee;
   display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.search-and-tags {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.explorer-toolbar {
+  display: flex;
   justify-content: space-between;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 15px;
+  border-top: 1px solid #eee;
+  padding-top: 10px;
+}
+
+.search-input {
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+  width: 250px;
+}
+
+.explorer-header {
+  display: none; /* Removed redundant header */
 }
 
 .tags-row {
@@ -248,13 +207,4 @@
   text-align: center;
   padding: 40px;
   color: #888;
-}
-
-.prompt-explorer-loading {
-  padding: 40px;
-  text-align: center;
-  color: #888;
-  background: #f9f9f9;
-  border-radius: 12px;
-  border: 1px dashed #ddd;
 }

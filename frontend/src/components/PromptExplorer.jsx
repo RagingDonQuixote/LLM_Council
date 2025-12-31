@@ -67,13 +67,8 @@ export default function PromptExplorer({ onSelect, currentConfig }) {
 
   return (
     <div className={`prompt-explorer ${viewMode}`}>
-      <div className="explorer-header">
-        <div className="explorer-title">
-          <h3>Prompt Library</h3>
-          <span className="count">{filteredPrompts.length} prompts found</span>
-        </div>
-        
-        <div className="explorer-controls">
+      <div className="filter-bar">
+        <div className="search-and-tags">
           <input 
             type="text" 
             placeholder="Search prompts..." 
@@ -81,6 +76,36 @@ export default function PromptExplorer({ onSelect, currentConfig }) {
             onChange={(e) => setSearchQuery(e.target.value)}
             className="search-input"
           />
+          <div className="tags-row">
+            {allAvailableTags.map(tag => (
+              <button 
+                key={tag}
+                className={`tag-pill ${activeTags.includes(tag) ? 'active' : ''}`}
+                onClick={() => toggleTag(tag)}
+              >
+                {tag}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="explorer-toolbar">
+          <div className="logic-toggle">
+            <span className="label">Filter:</span>
+            <button 
+              className={filterLogic === 'OR' ? 'active' : ''} 
+              onClick={() => setFilterLogic('OR')}
+            >
+              OR
+            </button>
+            <button 
+              className={filterLogic === 'AND' ? 'active' : ''} 
+              onClick={() => setFilterLogic('AND')}
+            >
+              AND
+            </button>
+          </div>
+          
           <div className="view-toggles">
             <button 
               className={viewMode === 'tiles' ? 'active' : ''} 
@@ -97,35 +122,6 @@ export default function PromptExplorer({ onSelect, currentConfig }) {
               ⛶
             </button>
           </div>
-        </div>
-      </div>
-
-      <div className="filter-bar">
-        <div className="tags-row">
-          {allAvailableTags.map(tag => (
-            <button 
-              key={tag}
-              className={`tag-pill ${activeTags.includes(tag) ? 'active' : ''}`}
-              onClick={() => toggleTag(tag)}
-            >
-              {tag}
-            </button>
-          ))}
-        </div>
-        <div className="logic-toggle">
-          <span className="label">Filter:</span>
-          <button 
-            className={filterLogic === 'OR' ? 'active' : ''} 
-            onClick={() => setFilterLogic('OR')}
-          >
-            OR
-          </button>
-          <button 
-            className={filterLogic === 'AND' ? 'active' : ''} 
-            onClick={() => setFilterLogic('AND')}
-          >
-            AND
-          </button>
         </div>
       </div>
 

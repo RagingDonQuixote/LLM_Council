@@ -62,12 +62,15 @@ An jedem Breakpoint hat der Human Chair drei primäre Optionen:
 - [x] Vorbefüllung mit Beispiel-Prompts & Tags.
 - [ ] **[Neu]** Erweiterung der `prompts` Tabelle um `rating` (Integer) und `usage_count` (Integer).
 
-### Phase 2: UI Transformation (Mission Control)
-- [ ] Implementierung des dreigeteilten Hauptlayouts.
-- [ ] Integration einer Flow-Library für den Ereignisbaum in der Mitte.
-- [ ] Entwicklung der Breakpoint-UI (Interaktions-Karten im Chat).
-- [ ] Prompt Explorer: Kachel- vs. Vollbildmodus oberhalb des Chats.
-- [ ] Tag-Filter mit UND/ODER Logik implementieren.
+### Phase 2: UI Transformation (Mission Control) [Abgeschlossen v1.30]
+- [x] Implementierung des dreigeteilten Hauptlayouts.
+- [x] Integration einer Flow-Library für den Ereignisbaum in der Mitte.
+- [x] Entwicklung der Breakpoint-UI (Interaktions-Karten im Chat).
+- [x] Prompt Explorer: Kachel- vs. Vollbildmodus oberhalb des Chats.
+- [x] Tag-Filter mit UND/ODER Logik implementieren.
+- [x] **[Neu]** WorkArea-Dock mit horizontaler/vertikaler Ausrichtung.
+- [x] **[Neu]** Real-Minimierung der Kacheln via Dock-Recovery.
+- [x] **[Neu]** IBM Terminal (Retro-Ansicht) für System-Logs.
 
 ### Phase 3: Der Ereignisbaum & Stage-Logik
 - [ ] Stage 0: Blueprint-Generator (AI Chair erstellt Baum-Vorschlag).

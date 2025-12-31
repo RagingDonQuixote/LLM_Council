@@ -1,0 +1,136 @@
+.work-area {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none; /* Let clicks pass through to messages if not on a modal/dock */
+  z-index: 10000; /* Extremely high to beat any other component */
+}
+
+.work-area-dock {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.98);
+  padding: 8px 12px;
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  z-index: 10001;
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  pointer-events: auto; /* Enable clicks for dock */
+  transition: box-shadow 0.2s, transform 0.2s, padding 0.2s;
+}
+
+.work-area-dock.vertical {
+  flex-direction: column;
+  padding: 12px 8px;
+  width: auto;
+  min-width: 45px;
+}
+
+.work-area-dock.vertical .dock-handle {
+  border-right: none;
+  border-bottom: 1px solid #dee2e6;
+  margin-right: 0;
+  margin-bottom: 4px;
+  padding: 8px 4px;
+}
+
+.work-area-dock.vertical .dock-separator {
+  width: 80%;
+  height: 1px;
+  margin: 4px 0;
+}
+
+.work-area-dock.vertical .dock-btn {
+  padding: 8px;
+  justify-content: center;
+}
+
+.work-area-dock.dragging {
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.25);
+  opacity: 0.9;
+}
+
+.dock-handle {
+  cursor: move;
+  padding: 4px 8px;
+  color: #adb5bd;
+  font-size: 18px;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid #dee2e6;
+  margin-right: 4px;
+}
+
+.dock-handle:hover {
+  color: #495057;
+}
+
+.modal-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  pointer-events: none; /* Let clicks pass through */
+}
+
+.dock-btn {
+  padding: 6px 12px;
+  border: none;
+  background: #f8f9fa;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #495057;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #dee2e6;
+}
+
+.dock-btn:hover {
+  background: #e9ecef;
+  transform: translateY(-1px);
+}
+
+.dock-btn.active {
+  background: #e7f5ff;
+  color: #007bff;
+  border-color: #a5d8ff;
+}
+
+.dock-btn.active.minimized {
+  background: #f8f9fa;
+  border-color: #adb5bd;
+  color: #6c757d;
+  opacity: 0.7;
+}
+
+.dock-btn.minimize-all {
+  background: #fff5f5;
+  color: #ff6b6b;
+  border-color: #ffc9c9;
+}
+
+.dock-btn.minimize-all:hover {
+  background: #ff7875;
+  color: white;
+}
+
+.dock-separator {
+  width: 1px;
+  background: #dee2e6;
+  margin: 4px 0;
+}
+
+/* Modals should have pointer-events: auto */
+.universal-modal {
+  pointer-events: auto;
+}

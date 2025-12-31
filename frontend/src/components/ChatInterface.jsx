@@ -4,10 +4,7 @@ import Stage1 from './Stage1';
 import Stage2 from './Stage2';
 import Stage3 from './Stage3';
 import Stage4 from './Stage4';
-import PromptExplorer from './PromptExplorer';
-import BlueprintTree from './BlueprintTree';
-import ResourceMonitor from './ResourceMonitor';
-import AuditViewer from './AuditViewer';
+import WorkArea from './WorkArea';
 import './ChatInterface.css';
 
 export default function ChatInterface({
@@ -22,46 +19,14 @@ export default function ChatInterface({
   onStage4Cancel,
   currentConfig,
   onOpenSettings,
-  modelsMetadata
+  modelsMetadata,
+  showTerminal,
+  setShowTerminal
 }) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef(null);
 
-  const [chatWidth, setChatWidth] = useState(45); // percentage
-  const [blueprintWidth, setBlueprintWidth] = useState(30); // percentage
   const [showAudit, setShowAudit] = useState(false);
-  const isResizingChat = useRef(false);
-  const isResizingBlueprint = useRef(false);
-
-  useEffect(() => {
-    const handleMouseMove = (e) => {
-      if (isResizingChat.current) {
-        const newWidth = (e.clientX / window.innerWidth) * 100;
-        if (newWidth > 20 && newWidth < 70) {
-          setChatWidth(newWidth);
-        }
-      } else if (isResizingBlueprint.current) {
-        const chatPixelWidth = (chatWidth / 100) * window.innerWidth;
-        const newBlueprintWidth = ((e.clientX - chatPixelWidth) / window.innerWidth) * 100;
-        if (newBlueprintWidth > 15 && newBlueprintWidth < 50) {
-          setBlueprintWidth(newBlueprintWidth);
-        }
-      }
-    };
-
-    const handleMouseUp = () => {
-      isResizingChat.current = false;
-      isResizingBlueprint.current = false;
-      document.body.style.cursor = 'default';
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [chatWidth]);
 
   // Filter messages to show only up to the active revision
   const getVisibleMessages = () => {
@@ -148,19 +113,12 @@ export default function ChatInterface({
             <button className="edit-shortcut audit-btn" onClick={() => setShowAudit(true)} title="Mission Audit & Analysis">
               🔍 Audit
             </button>
-            <button className="edit-shortcut" onClick={onOpenSettings} title="Edit Board Settings">
-              ⚙️ Settings
-            </button>
           </div>
         </div>
       )}
 
-      <div className="mission-control-body">
-        {/* Left Column: Chat */}
-        <div className="column chat-column" style={{ width: `${chatWidth}%`, flex: 'none' }}>
-          <div className="column-header">
-            <h4>Council Communication</h4>
-          </div>
+      <div className="mission-control-layout">
+        <div className="work-area-wrapper">
           <div className="messages-container">
             {visibleMessages.length === 0 ? (
               <div className="stage0-container">
@@ -168,10 +126,6 @@ export default function ChatInterface({
                   <h2>Stage 0: Blueprinting</h2>
                   <p>Select a prompt or define your mission.</p>
                 </div>
-                <PromptExplorer 
-                  onSelect={(content) => setInput(content)} 
-                  currentConfig={currentConfig}
-                />
               </div>
             ) : (
               visibleMessages.map((msg, index) => (
@@ -258,6 +212,17 @@ export default function ChatInterface({
             <div ref={messagesEndRef} />
           </div>
 
+          <WorkArea 
+            conversation={conversation}
+            currentConfig={currentConfig}
+            modelsMetadata={modelsMetadata}
+            onPromptSelect={(content) => setInput(content)}
+            showTerminal={showTerminal}
+            setShowTerminal={setShowTerminal}
+          />
+        </div>
+
+        <div className="chat-input-area">
           {(conversation.messages.length === 0 || !showStage4) && (
             <form className="input-form" onSubmit={handleSubmit}>
               <textarea
@@ -278,63 +243,6 @@ export default function ChatInterface({
               </button>
             </form>
           )}
-        </div>
-
-        {/* Resizer 1 */}
-        <div 
-          className="resizer" 
-          onMouseDown={() => {
-            isResizingChat.current = true;
-            document.body.style.cursor = 'col-resize';
-          }}
-        />
-
-        {/* Middle Column: Event Tree */}
-        <div className="column blueprint-column" style={{ width: `${blueprintWidth}%`, flex: 'none' }}>
-          <div className="column-header">
-            <h4>Council Blueprint</h4>
-          </div>
-          <BlueprintTree sessionState={conversation.session_state} />
-          
-          {conversation.session_state?.status === 'paused' && (
-            <div className="breakpoint-notification">
-              <div className="notification-content">
-                <h5>🛑 Breakpoint Reached</h5>
-                <p>The Council has reached a strategic milestone and awaits your approval to proceed.</p>
-                <div className="notification-actions">
-                  <button 
-                    className="action-btn approve"
-                    onClick={() => onSendMessage("Approved. Proceed with the blueprint.")}
-                  >
-                    Approve & Continue
-                  </button>
-                  <button 
-                    className="action-btn reset"
-                    onClick={() => onSendMessage("I want to reset the mission and refine the blueprint.")}
-                  >
-                    Reset & Refine
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Resizer 2 */}
-        <div 
-          className="resizer" 
-          onMouseDown={() => {
-            isResizingBlueprint.current = true;
-            document.body.style.cursor = 'col-resize';
-          }}
-        />
-
-        {/* Right Column: Resources */}
-        <div className="column resources-column" style={{ flex: 1 }}>
-          <div className="column-header">
-            <h4>Resource Monitor</h4>
-          </div>
-          <ResourceMonitor config={currentConfig} modelsMetadata={modelsMetadata} />
         </div>
       </div>
 

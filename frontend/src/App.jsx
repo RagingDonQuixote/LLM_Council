@@ -291,6 +291,7 @@ function App() {
 
     setIsLoading(true);
     setTerminalLogs([]); // Clear logs for new message
+    setShowTerminal(true); // Show terminal when council starts working
     
     try {
       await api.sendMessage(currentConversation.id, content, (event) => {
@@ -350,15 +351,12 @@ function App() {
         onStage4Submit={handleStage4Submit}
         onStage4Cancel={handleStage4Cancel}
         isLoadingStage4={isLoading}
-         currentConfig={councilConfig}
-         onOpenSettings={handleOpenSettings}
-         modelsMetadata={modelsMetadata}
+        currentConfig={councilConfig}
+        onOpenSettings={handleOpenSettings}
+        modelsMetadata={modelsMetadata}
+        showTerminal={showTerminal}
+        setShowTerminal={setShowTerminal}
        />
-      <RetroTerminal 
-        logs={terminalLogs} 
-        isVisible={showTerminal} 
-        onClose={() => setShowTerminal(false)} 
-      />
       {showSettings && (
         <Settings 
           onClose={handleCloseSettings} 
