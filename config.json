@@ -5,7 +5,7 @@
   ],
   "chairman_model": "nousresearch/hermes-3-llama-3.1-405b:free",
   "consensus_strategy": "borda",
-  "response_timeout": 30,
+  "response_timeout": 60,
   "model_personalities": {
     "model-a": "Funny",
     "xiaomi/mimo-v2-flash:free": "Xiaomi Reasoning",

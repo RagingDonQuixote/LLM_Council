@@ -29,7 +29,7 @@ For each task, identify:
 3. If the task requires a COUNCIL_CONSENSUS (multiple models) or a SINGLE_SPECIALIST.
 4. If a human BREAKPOINT is needed (user must approve or provide input).
 
-Your output must be a JSON object:
+Your output must be a JSON object. Do not include any introductory or concluding text. Use only valid JSON.
 {
   "mission_name": "A short descriptive name",
   "reasoning": "Overall strategy explanation",
@@ -81,9 +81,22 @@ Your output must be a JSON object:
         if "```json" in content:
             content = content.split("```json")[1].split("```")[0].strip()
         elif "```" in content:
-            content = content.split("```")[1].split("```")[0].strip()
+            # Check if it's really a code block or just a mention
+            blocks = content.split("```")
+            if len(blocks) >= 3:
+                content = blocks[1].strip()
+            else:
+                content = content.strip()
         
-        plan = json.loads(content)
+        # Fallback: if content starts with { and ends with }, but contains extra text
+        if not content.startswith("{") and "{" in content:
+            content = "{" + content.split("{", 1)[1]
+        if not content.endswith("}") and "}" in content:
+            content = content.rsplit("}", 1)[0] + "}"
+            
+        # Robust JSON cleaning: use strict=False to handle control characters
+        # If there are still issues, we can add more targeted cleaning.
+        plan = json.loads(content, strict=False)
         if log_callback:
             # ToBeDeleted_start
             # log_callback(f"Strategy identified: {plan.get('strategy', 'DIRECT_EXECUTION')}. Goal: {plan.get('current_goal')}")
@@ -97,15 +110,7 @@ Your output must be a JSON object:
         return plan
     except Exception as e:
         if log_callback:
-            log_callback(f"Error parsing strategy: {str(e)}.")
-        # ToBeDeleted_start
-        # return {
-        #     "strategy": "DIRECT_EXECUTION",
-        #     "reasoning": "Fallback due to parsing error.",
-        #     "current_goal": "Answer the user query.",
-        #     "requires_consensus": False
-        # }
-        # ToBeDeleted_end
+            log_callback(f"Error parsing strategy: {str(e)}. Raw response: {content}")
         raise ValueError(f"Failed to parse Mission Blueprint: {str(e)}")
 
 
@@ -391,6 +396,17 @@ async def stage3_synthesize_final(
     system_prompt = """You are the Chairman of the LLM Council.
 Review the member responses and evaluations.
 
+CRITICAL INSTRUCTION:
+Prioritize quantitative data and specific numerical facts (e.g., stock prices, P/E ratios, revenue figures) over purely narrative or qualitative descriptions. 
+If one model provides specific figures and another provides only a general description, ensure the final synthesis incorporates the specific figures.
+Do not sacrifice precision for 'flow' or 'style'.
+
+CONSENSUS REFINEMENT:
+If the peer evaluations show disagreement (e.g., Model A ranks Model B low, and vice versa), act as an arbiter.
+Identify the root cause of disagreement (e.g., factual error vs. stylistic preference).
+If the disagreement is factual, verify who provided sources or more specific data.
+If the disagreement is stylistic, synthesize the best structure from both.
+
 Your task is to decide:
 1. Is the current goal met? (e.g., if a consensus was required, have they agreed?)
 2. Is the user's ORIGINAL request completely fulfilled? (e.g., if the user asked for a poem after the consensus, is the poem there?)
@@ -445,7 +461,7 @@ Your output must be a JSON object:
         elif "```" in raw_content:
             raw_content = raw_content.split("```")[1].split("```")[0].strip()
         
-        decision = json.loads(raw_content)
+        decision = json.loads(raw_content, strict=False)
         
         if log_callback:
             # ToBeDeleted_start
@@ -815,5 +831,16 @@ async def run_full_council(user_query: str, conversation_id: str = None, log_cal
         session_state["status"] = "completed"
         if conversation_id:
             storage.update_session_state(conversation_id, session_state)
+            
+            # Export to markdown if we have a final answer
+            final_ans = last_stage3.get("response") or last_stage3.get("content")
+            if final_ans:
+                try:
+                    filepath = storage.export_to_markdown(conversation_id, final_ans, user_query)
+                    if log_callback:
+                        log_callback(f"📄 Result exported to {filepath}")
+                except Exception as e:
+                    if log_callback:
+                        log_callback(f"⚠️ Failed to export markdown: {str(e)}")
 
     return last_stage1, last_stage2, last_stage3, last_metadata

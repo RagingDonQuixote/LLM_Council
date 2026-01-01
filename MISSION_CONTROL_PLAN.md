@@ -71,11 +71,14 @@ An jedem Breakpoint hat der Human Chair drei primäre Optionen:
 - [x] **[Neu]** WorkArea-Dock mit horizontaler/vertikaler Ausrichtung.
 - [x] **[Neu]** Real-Minimierung der Kacheln via Dock-Recovery.
 - [x] **[Neu]** IBM Terminal (Retro-Ansicht) für System-Logs.
+- [x] **[Neu]** Automatischer Markdown-Export finaler Ergebnisse (v1.30.1).
+- [x] **[Neu]** Konsens-Arbiter Logik im Chairman-System-Prompt (v1.30.1).
 
 ### Phase 3: Der Ereignisbaum & Stage-Logik
 - [ ] Stage 0: Blueprint-Generator (AI Chair erstellt Baum-Vorschlag).
 - [ ] Backend-Logik für Breakpoints und "Human-Approval".
 - [ ] Skill-Based Routing: Automatisches Buchen von Modellen basierend auf Task-Anforderungen.
+- [x] **[Erfolgreich getestet]** Integration von Human-Feedback in laufende Missionen (v1.30.1).
 - [ ] Snapshot-System für "Backtracking" im Baum.
 
 ### Phase 4: Monitoring & Analytics

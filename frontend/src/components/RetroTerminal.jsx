@@ -17,8 +17,16 @@ export default function RetroTerminal({ logs, isVisible, onClose }) {
     <div className="retro-terminal-content">
       <div className="terminal-body">
         <div className="terminal-content">
+          <div className="terminal-header">
+            SYSTEM STATUS: ONLINE
+            <br />
+            LAST UPDATE: {new Date().toLocaleTimeString()}
+            <br />
+            ----------------------------------------
+          </div>
           {logs.map((log, i) => (
             <div key={i} className="terminal-line">
+              <span className="timestamp">[{new Date().toLocaleTimeString()}]</span>
               <span className="prompt">C:\COUNCIL&gt;</span> {log}
             </div>
           ))}
