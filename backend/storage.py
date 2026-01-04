@@ -145,6 +145,69 @@ class Storage:
         )
         ''')
         
+        # Unified Models table
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS unified_models (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            developer_id TEXT NOT NULL,
+            access_provider_id TEXT NOT NULL,
+            access_provider_short TEXT NOT NULL,
+            hosting_provider_id TEXT,
+            hosting_provider_short TEXT,
+            base_model_id TEXT NOT NULL,
+            base_model_name TEXT NOT NULL,
+            variant_name TEXT,
+            print_name_1 TEXT NOT NULL,
+            print_name_part1 TEXT NOT NULL,
+            print_name_part2 TEXT NOT NULL,
+            capabilities TEXT NOT NULL, -- JSON
+            cost TEXT NOT NULL, -- JSON
+            technical TEXT NOT NULL, -- JSON
+            latency_ms REAL,
+            last_latency_check TEXT,
+            provider_raw_data TEXT, -- JSON
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            latency_live REAL,
+            latency_live_timestamp TEXT,
+            UNIQUE(developer_id, access_provider_id, hosting_provider_id, base_model_id, variant_name)
+        )
+        ''')
+        
+        # Add missing columns for unified_models if they don't exist
+        try:
+            cursor.execute("ALTER TABLE unified_models ADD COLUMN latency_live REAL")
+        except sqlite3.OperationalError:
+            pass
+            
+        try:
+            cursor.execute("ALTER TABLE unified_models ADD COLUMN latency_live_timestamp TEXT")
+        except sqlite3.OperationalError:
+            pass
+        
+        # Indexes for performance
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_unified_models_search ON unified_models(print_name_1, base_model_name)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_unified_models_capabilities ON unified_models(capabilities)")
+        
+        # API Keys table
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS api_keys (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            provider TEXT NOT NULL, -- openrouter, openai, anthropic, etc.
+            key_hash TEXT NOT NULL, -- we store the full key for now but could hash it. User asked for local storage.
+            key_value TEXT NOT NULL,
+            label TEXT, -- Generated short name e.g. "sk-or...8912z"
+            description TEXT, -- User notes
+            limit_amount REAL, -- e.g. 5.0
+            limit_reset TEXT, -- daily, weekly, monthly
+            usage_amount REAL,
+            limit_remaining REAL,
+            is_active INTEGER DEFAULT 1,
+            created_at TEXT NOT NULL,
+            last_checked TEXT -- When we last checked with provider API
+        )
+        ''')
+
         conn.commit()
         conn.close()
         
@@ -288,6 +351,17 @@ class Storage:
         conn.commit()
         conn.close()
         return deleted
+
+    def reset_conversation(self, conversation_id: str) -> bool:
+        """Reset a conversation (delete messages and session state)."""
+        conn = self.get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM messages WHERE conversation_id = ?", (conversation_id,))
+        cursor.execute("DELETE FROM audit_logs WHERE conversation_id = ?", (conversation_id,))
+        cursor.execute("UPDATE conversations SET session_state = NULL, last_modified = CURRENT_TIMESTAMP WHERE id = ?", (conversation_id,))
+        conn.commit()
+        conn.close()
+        return True
 
     def list_conversations(self, include_archived: bool = False) -> List[Dict[str, Any]]:
         """List all conversations (metadata only)."""
@@ -487,6 +561,161 @@ class Storage:
         )
         conn.commit()
         conn.close()
+
+    # API Key Management
+    def get_key_for_model(self, model_id: str) -> Optional[str]:
+        """
+        Get the appropriate API key for a given model.
+        Logic:
+        1. Check if model is free (via unified_models or heuristic).
+        2. If free, try to find a key labeled 'Free' or 'Budget: $0'.
+        3. Else, use a paid key (default or specific).
+        4. Fallback to any available OpenRouter key.
+        """
+        conn = self.get_db_connection()
+        cursor = conn.cursor()
+        
+        # 1. Check if model is free
+        # First check unified_models table
+        is_free = False
+        # Try to find by id (which might be variant id or base model id)
+        # Note: model_id in council is usually the full ID (e.g. google/gemini-2.0-flash-exp:free)
+        # We need to match this against unified_models. But unified_models stores broken down parts.
+        # We can try to match provider_raw_data id if we stored it, or use heuristic.
+        
+        # Heuristic is faster and reliable for :free suffix
+        if ":free" in model_id or "free" in model_id.lower():
+            is_free = True
+        
+        if not is_free:
+            # Check DB cost
+            # We assume model_id might match access_provider_id or similar in unified_models
+            # Or we just check if any model with this ID exists and is free
+            # Since unified_models schema is complex, let's stick to heuristic + simple check if we can
+            pass
+
+        # 2. Get all OpenRouter keys
+        cursor.execute("SELECT * FROM api_keys WHERE provider = 'openrouter' AND is_active = 1")
+        keys = [dict(r) for r in cursor.fetchall()]
+        conn.close()
+        
+        if not keys:
+            return None
+            
+        # 3. Select key
+        if is_free:
+            # Look for "free" key
+            for k in keys:
+                label = (k.get("label") or "").lower()
+                desc = (k.get("description") or "").lower()
+                if "free" in label or "free" in desc or "$0" in label or "$0" in desc:
+                    return k["key_value"]
+            # Fallback to any key
+            return keys[0]["key_value"]
+        else:
+            # Look for paid key (avoid keys explicitly marked as free only if possible)
+            paid_keys = []
+            for k in keys:
+                label = (k.get("label") or "").lower()
+                desc = (k.get("description") or "").lower()
+                if "free" not in label and "free" not in desc and "$0" not in label:
+                    paid_keys.append(k)
+            
+            if not paid_keys:
+                paid_keys = keys
+                
+            # Prefer keys with remaining limit > 0
+            for k in paid_keys:
+                limit = k.get("limit_remaining")
+                if limit is not None and limit > 0:
+                    return k["key_value"]
+            
+            # Fallback: return the first paid/default key
+            return paid_keys[0]["key_value"]
+
+    def list_api_keys(self) -> List[Dict[str, Any]]:
+        """List all API keys."""
+        conn = self.get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM api_keys ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def save_api_key(self, key_data: Dict[str, Any]) -> int:
+        """Save or update an API key."""
+        conn = self.get_db_connection()
+        cursor = conn.cursor()
+        now = datetime.utcnow().isoformat()
+        
+        if "id" in key_data and key_data["id"]:
+            # Update
+            cursor.execute(
+                """UPDATE api_keys SET 
+                   provider=?, key_value=?, label=?, description=?, 
+                   limit_amount=?, limit_reset=?, usage_amount=?, 
+                   limit_remaining=?, is_active=?, last_checked=?
+                   WHERE id=?""",
+                (
+                    key_data["provider"],
+                    key_data["key_value"],
+                    key_data["label"],
+                    key_data.get("description", ""),
+                    key_data.get("limit_amount"),
+                    key_data.get("limit_reset"),
+                    key_data.get("usage_amount"),
+                    key_data.get("limit_remaining"),
+                    key_data.get("is_active", 1),
+                    key_data.get("last_checked", now),
+                    key_data["id"]
+                )
+            )
+            key_id = key_data["id"]
+        else:
+            # Insert
+            cursor.execute(
+                """INSERT INTO api_keys 
+                   (provider, key_hash, key_value, label, description, 
+                    limit_amount, limit_reset, usage_amount, limit_remaining, 
+                    is_active, created_at, last_checked) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    key_data["provider"],
+                    "hash_placeholder", # Not used for logic, but kept for schema compat
+                    key_data["key_value"],
+                    key_data["label"],
+                    key_data.get("description", ""),
+                    key_data.get("limit_amount"),
+                    key_data.get("limit_reset"),
+                    key_data.get("usage_amount"),
+                    key_data.get("limit_remaining"),
+                    key_data.get("is_active", 1),
+                    now,
+                    key_data.get("last_checked", now)
+                )
+            )
+            key_id = cursor.lastrowid
+            
+        conn.commit()
+        conn.close()
+        return key_id
+
+    def delete_api_key(self, key_id: int):
+        """Delete an API key."""
+        conn = self.get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM api_keys WHERE id = ?", (key_id,))
+        conn.commit()
+        conn.close()
+
+    def get_api_key(self, key_id: int) -> Optional[Dict[str, Any]]:
+        """Get a specific API key."""
+        conn = self.get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM api_keys WHERE id = ?", (key_id,))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
 
     # Template Management
     def list_templates(self) -> List[Dict[str, Any]]:

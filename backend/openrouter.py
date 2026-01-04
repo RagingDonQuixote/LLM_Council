@@ -9,13 +9,16 @@ async def query_model(
     model: str,
     messages: List[Dict[str, str]],
     timeout: float = 120.0,
-    max_retries: int = 2
+    max_retries: int = 2,
+    api_key: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """
     Query a single model via OpenRouter API with retries for rate limits.
     """
+    key_to_use = api_key if api_key else OPENROUTER_API_KEY
+    
     headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Authorization": f"Bearer {key_to_use}",
         "Content-Type": "application/json",
     }
 

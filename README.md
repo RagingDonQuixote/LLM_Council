@@ -11,10 +11,11 @@ In a bit more detail, here is what happens when you submit a query:
 3. **Stage 3: Final response**. The designated Chairman of the LLM Council takes all of the model's responses and compiles them into a single final answer that is presented to the user.
 4. **Stage 6: Mission Control & WorkArea (v1.30)**: Introduction of the Mission Control Center with a switchable WorkArea dock (horizontal/vertical). Real-time resource monitoring, blueprint visualization, and recovery of the legacy IBM Terminal for deep logs.
 5. **Stage 4: Modal Perfection (v1.2.8)**: The Board Member selection in the settings modal has been perfected with vertical tiling, model description integration, dual pricing display, and a smart main/substitute mode switch.
-5. **Stage 0 & Consensus Loops (v1.2.8)**: The Chairman now analyzes the task beforehand. If a consensus is needed (e.g. agreeing on parameters or a common plan), the council enters iterative negotiation rounds. The Chairman manages the flow, provides instructions to the council, and can decide to continue negotiation or finalize the answer.
-6. **Stage 5: Human Feedback & Streaming (v1.2.8)**: The user can intervene as a "Human Chairman". Feedback is integrated via real-time streaming (SSE), allowing the user to steer the consensus process or request revisions while watching the council's internal logs.
-7. **Automated Documentation (v1.30.1)**: Final results are now automatically exported to the `exports/` directory as timestamped Markdown files.
-8. **Consensus Refinement (v1.30.1)**: Enhanced Chairman arbiter logic for resolving deep model disagreements through root-cause analysis.
+6. **Stage 0 & Consensus Loops (v1.2.8)**: The Chairman now analyzes the task beforehand. If a consensus is needed (e.g. agreeing on parameters or a common plan), the council enters iterative negotiation rounds. The Chairman manages the flow, provides instructions to the council, and can decide to continue negotiation or finalize the answer.
+7. **Stage 5: Human Feedback & Streaming (v1.2.8)**: The user can intervene as a "Human Chairman". Feedback is integrated via real-time streaming (SSE), allowing the user to steer the consensus process or request revisions while watching the council's internal logs.
+8. **Automated Documentation (v1.30.1)**: Final results are now automatically exported to the `exports/` directory as timestamped Markdown files.
+9. **Consensus Refinement (v1.30.1)**: Enhanced Chairman arbiter logic for resolving deep model disagreements through root-cause analysis.
+10. **Unified Model Database (v1.4.0)**: Comprehensive data pipeline that merges OpenRouter's base model metadata with specific provider endpoint data. Features a "Source of Truth" DB Browser with Origin Trace visualization to audit data provenance (Base vs. Endpoint).
 
 ## Vibe Code Alert
 
@@ -89,5 +90,5 @@ Then open http://localhost:5173 in your browser.
 
 - **Backend:** FastAPI (Python 3.10+), async httpx, OpenRouter API
 - **Frontend:** React + Vite, react-markdown for rendering
-- **Storage:** JSON files in `data/conversations/`
+- **Storage:** JSON files in `data/conversations/` and SQLite (`council.db`) for model data.
 - **Package Management:** uv for Python, npm for JavaScript

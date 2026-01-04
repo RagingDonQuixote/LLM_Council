@@ -19,7 +19,7 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 1000;
+  z-index: 21000; /* Ensure it's above TopMenuBar (20000) and everything else */
 }
 
 .delete-modal {
@@ -242,6 +242,10 @@
 
 .icon-btn:hover {
   background: rgba(0, 0, 0, 0.1);
+}
+
+.restart-btn:hover {
+  background: rgba(255, 193, 7, 0.3);
 }
 
 .delete-btn:hover {

@@ -1,0 +1,103 @@
+/* Unified Model Selection Styles */
+.unified-model-selection {
+  margin-top: 16px;
+}
+
+.model-selection-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.model-select-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.model-select-group label {
+  font-weight: 500;
+  font-size: 14px;
+  color: #374151;
+}
+
+.base-model-select,
+.variant-select {
+  /* Inherits styles from SearchableSelect.css */
+}
+
+.selection-info {
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 12px;
+  margin-top: 12px;
+}
+
+.selection-info p {
+  margin: 4px 0;
+  font-size: 14px;
+}
+
+.selection-info strong {
+  color: #1e293b;
+}
+
+.no-models-message {
+  text-align: center;
+  padding: 24px;
+  background-color: #fef3c7;
+  border: 1px solid #fbbf24;
+  border-radius: 6px;
+  color: #92400e;
+}
+
+.no-models-message p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.refresh-models-btn {
+  background-color: #3b82f6;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.refresh-models-btn:hover:not(:disabled) {
+  background-color: #2563eb;
+}
+
+.refresh-models-btn:disabled {
+  background-color: #9ca3af;
+  cursor: not-allowed;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .model-selection-row {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  
+  .model-select-group label {
+    font-size: 13px;
+  }
+}
+
+/* Integration with existing Settings styles */
+.settings-section .unified-model-selection {
+  border-top: 1px solid #e5e7eb;
+  padding-top: 16px;
+}
+
+.settings-section:first-child .unified-model-selection {
+  border-top: none;
+  padding-top: 0;
+}

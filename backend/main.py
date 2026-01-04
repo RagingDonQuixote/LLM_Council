@@ -1,13 +1,15 @@
 """FastAPI backend for LLM Council."""
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import uuid
 import json
+import os
 import asyncio
+from datetime import datetime
 
 from . import storage, config, models_service, audit_service
 from .council import (
@@ -132,7 +134,15 @@ async def delete_conversation_permanent(conversation_id: str):
     success = storage.storage.delete_conversation(conversation_id)
     if not success:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    return {"status": "success"}
+    return {"status": "success", "id": conversation_id}
+
+@app.post("/api/conversations/{conversation_id}/reset")
+async def reset_conversation(conversation_id: str):
+    """Reset a conversation (clear messages and state)."""
+    success = storage.storage.reset_conversation(conversation_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return {"status": "success", "id": conversation_id}
 
 @app.get("/api/fail-lists")
 async def get_fail_lists():
@@ -172,6 +182,133 @@ async def test_models_availability(model_ids: List[str]):
         "total_tested": len(model_ids),
         "failed_count": len(failed_models)
     }
+
+# Unified Models API Endpoints
+@app.get("/api/unified-models/base")
+async def get_base_models(search: str = None, limit: int = 1000):
+    """Get list of unique base models with optional search."""
+    from .unified_model_service import unified_model_service
+    
+    base_models = unified_model_service.get_base_models()
+    
+    # Apply search if provided
+    if search and search.strip():
+        # Filter base models by search query
+        search_lower = search.lower()
+        filtered_base_models = []
+        for base_model in base_models:
+            # Search in base model name and developer
+            if (search_lower in base_model['base_model_name'].lower() or 
+                search_lower in base_model['developer_id'].lower() or
+                search_lower in base_model['print_name_part1'].lower()):
+                filtered_base_models.append(base_model)
+        base_models = filtered_base_models
+    
+    # Limit results
+    return base_models[:limit]
+
+@app.get("/api/unified-models/variants/{base_model_id}")
+async def get_model_variants(base_model_id: str):
+    """Get all variants for a specific base model."""
+    from .unified_model_service import unified_model_service
+    
+    variants = unified_model_service.get_variants_for_base_model(base_model_id)
+    return variants
+
+@app.get("/api/unified-models/search")
+async def search_models(q: str, limit: int = 20):
+    """Global search across all unified models."""
+    from .unified_model_service import unified_model_service
+    
+    results = unified_model_service.search_models(q, limit)
+    return results
+
+@app.get("/api/unified-models/all")
+async def get_all_unified_models():
+    """Get ALL unified models for the Data Inspector."""
+    from .unified_model_service import unified_model_service
+    return unified_model_service.get_all_unified_models()
+
+@app.post("/api/unified-models/refresh")
+async def refresh_unified_models():
+    """Trigger refresh of all models from providers."""
+    from .unified_model_service import unified_model_service
+    
+    try:
+        count = await unified_model_service.refresh_all_models()
+        return {"status": "success", "models_refreshed": count}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to refresh models: {str(e)}")
+
+@app.get("/api/unified-models/statistics")
+async def get_model_statistics():
+    """Get statistics about unified model database."""
+    from .unified_model_service import unified_model_service
+    
+    stats = unified_model_service.get_model_statistics()
+    return stats
+
+@app.post("/api/unified-models/update-latencies")
+async def update_model_latencies():
+    """Update latency data for all models."""
+    from .unified_model_service import unified_model_service
+    
+    try:
+        await unified_model_service.update_latencies()
+        return {"status": "success", "message": "Latency update completed"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update latencies: {str(e)}")
+
+@app.post("/api/unified-models/test-latency/{model_id}")
+async def test_unified_model_latency(model_id: int):
+    """Perform a live latency check for a specific unified model."""
+    from .unified_model_service import unified_model_service
+    import httpx
+    import time
+    from datetime import datetime
+    
+    # Get the model from DB to get its provider ID
+    conn = storage.storage.get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM unified_models WHERE id = ?", (model_id,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    if not row:
+        raise HTTPException(status_code=404, detail="Model not found")
+    
+    model = dict(row)
+    provider_data = json.loads(model['provider_raw_data'])
+    or_id = provider_data.get('id')
+    
+    if not or_id:
+        raise HTTPException(status_code=400, detail="No provider ID for live check")
+    
+    # Simple live check (e.g., HEAD request to provider or specific endpoint)
+    # For OpenRouter, we could try to fetch its specific metadata again
+    start_time = time.time()
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            # We just do a ping or small request
+            await client.get("https://openrouter.ai/api/v1/models")
+        
+        latency_live = (time.time() - start_time) * 1000
+        timestamp = datetime.utcnow().isoformat()
+        
+        # Update DB
+        conn = storage.storage.get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE unified_models 
+            SET latency_live = ?, latency_live_timestamp = ? 
+            WHERE id = ?
+        ''', (latency_live, timestamp, model_id))
+        conn.commit()
+        conn.close()
+        
+        return {"status": "success", "latency_live": latency_live, "timestamp": timestamp}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 @app.get("/api/conversations", response_model=List[ConversationMetadata])
 async def list_conversations():
@@ -282,10 +419,10 @@ async def track_prompt_usage(prompt_id: str):
     return {"status": "usage tracked"}
 
 @app.get("/api/test-latency/{model_id:path}")
-async def test_model_latency(model_id: str):
+async def test_model_latency(model_id: str, x_api_key: Optional[str] = Header(None, alias="X-API-Key")):
     """Test the latency of a specific model."""
     import time
-    print(f"DEBUG: Testing latency for model: {model_id}")
+    print(f"DEBUG: Testing latency for model: {model_id} with provided key: {'Yes' if x_api_key else 'No'}")
     start_time = time.time()
     
     # Simple test message
@@ -293,7 +430,7 @@ async def test_model_latency(model_id: str):
     
     # Use a short timeout for the test
     try:
-        response = await query_model(model_id, messages, timeout=15.0)
+        response = await query_model(model_id, messages, timeout=15.0, api_key=x_api_key)
     except Exception as e:
         print(f"DEBUG: Error during latency test for {model_id}: {e}")
         response = None
@@ -430,6 +567,260 @@ async def end_session(conversation_id: str, request: RatingRequest):
 
     storage.storage.end_session_with_rating(conversation_id, request.rating)
     return {"status": "session ended", "rating": request.rating}
+
+# API Keys Endpoints
+
+class ApiKeyRequest(BaseModel):
+    provider: str
+    key_value: str
+    description: str = ""
+    limit_amount: Optional[float] = None
+    limit_reset: Optional[str] = None
+    is_active: bool = True
+
+@app.get("/api/keys")
+async def list_api_keys():
+    """List all API keys."""
+    return storage.storage.list_api_keys()
+
+@app.post("/api/keys")
+async def save_api_key(request: ApiKeyRequest):
+    """Save a new API key."""
+    # Generate label: first 5 ... last 5
+    key_val = request.key_value
+    if len(key_val) > 10:
+        label = f"{key_val[:5]}...{key_val[-5:]}"
+    else:
+        label = key_val
+        
+    key_data = {
+        "provider": request.provider,
+        "key_value": request.key_value,
+        "label": label,
+        "description": request.description,
+        "limit_amount": request.limit_amount,
+        "limit_reset": request.limit_reset,
+        "is_active": request.is_active
+    }
+    
+    # Auto-check OpenRouter limit if applicable
+    if request.provider == "openrouter":
+        try:
+            import httpx
+            async with httpx.AsyncClient() as client:
+                resp = await client.get("https://openrouter.ai/api/v1/key", headers={"Authorization": f"Bearer {request.key_value}"})
+                if resp.status_code == 200:
+                    data = resp.json().get("data", {})
+                    key_data["limit_amount"] = data.get("limit")
+                    key_data["limit_remaining"] = data.get("limit_remaining")
+                    key_data["usage_amount"] = data.get("usage")
+                    key_data["limit_reset"] = data.get("limit_reset")
+        except Exception as e:
+            print(f"Failed to check OpenRouter key: {e}")
+
+    new_id = storage.storage.save_api_key(key_data)
+    return {"status": "success", "id": new_id, "data": key_data}
+
+@app.put("/api/keys/{key_id}")
+async def update_api_key(key_id: int, request: ApiKeyRequest):
+    """Update an existing API key."""
+    existing = storage.storage.get_api_key(key_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Key not found")
+        
+    # Keep existing stats unless refreshed
+    key_data = dict(existing)
+    key_data.update({
+        "provider": request.provider,
+        "key_value": request.key_value,
+        "description": request.description,
+        "limit_amount": request.limit_amount,
+        "limit_reset": request.limit_reset,
+        "is_active": request.is_active
+    })
+    
+    # Update label if key changed
+    if request.key_value != existing["key_value"]:
+        key_val = request.key_value
+        if len(key_val) > 10:
+            key_data["label"] = f"{key_val[:5]}...{key_val[-5:]}"
+        else:
+            key_data["label"] = key_val
+
+    storage.storage.save_api_key(key_data)
+    return {"status": "success", "id": key_id}
+
+@app.delete("/api/keys/{key_id}")
+async def delete_api_key(key_id: int):
+    """Delete an API key."""
+    storage.storage.delete_api_key(key_id)
+    return {"status": "success"}
+
+@app.post("/api/keys/{key_id}/check")
+async def check_api_key(key_id: int):
+    """Check/Refresh an API key's status (OpenRouter only for now)."""
+    key = storage.storage.get_api_key(key_id)
+    if not key:
+        raise HTTPException(status_code=404, detail="Key not found")
+        
+    if key["provider"] == "openrouter":
+        try:
+            import httpx
+            async with httpx.AsyncClient() as client:
+                resp = await client.get("https://openrouter.ai/api/v1/key", headers={"Authorization": f"Bearer {key['key_value']}"})
+                if resp.status_code == 200:
+                    data = resp.json().get("data", {})
+                    key["limit_amount"] = data.get("limit")
+                    key["limit_remaining"] = data.get("limit_remaining")
+                    key["usage_amount"] = data.get("usage")
+                    key["limit_reset"] = data.get("limit_reset")
+                    key["last_checked"] = datetime.utcnow().isoformat()
+                    storage.storage.save_api_key(key)
+                    return {"status": "success", "data": key}
+                else:
+                    return {"status": "error", "message": f"API returned {resp.status_code}"}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+            
+    return {"status": "skipped", "message": "Provider not supported for auto-check"}
+
+
+# DB Admin Endpoints
+@app.get("/api/admin/db/tables")
+async def list_db_tables():
+    """List all tables in the database."""
+    conn = storage.storage.get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+    tables = [row[0] for row in cursor.fetchall()]
+    conn.close()
+    
+    # Add virtual tables
+    if os.path.exists("backend/all_models_dump.json"):
+        tables.append("RAW_OPENROUTER_DUMP")
+        
+    return {"tables": tables}
+
+@app.get("/api/admin/db/table/{table_name}")
+async def get_table_content(
+    table_name: str, 
+    page: int = 1, 
+    page_size: int = 50,
+    filter_column: Optional[str] = None,
+    filter_value: Optional[str] = None
+):
+    """Get content of a table with pagination and optional filtering."""
+    
+    # Handle Virtual Table: RAW_OPENROUTER_DUMP
+    if table_name == "RAW_OPENROUTER_DUMP":
+        if not os.path.exists("backend/all_models_dump.json"):
+             raise HTTPException(status_code=404, detail="Dump file not found")
+             
+        try:
+            with open("backend/all_models_dump.json", "r", encoding="utf-8") as f:
+                data = json.load(f)
+                
+            # Flatten/Stringify complex fields for display
+            processed_data = []
+            for item in data:
+                processed_item = {}
+                for k, v in item.items():
+                    if isinstance(v, (dict, list)):
+                        processed_item[k] = json.dumps(v)
+                    else:
+                        processed_item[k] = v
+                processed_data.append(processed_item)
+                
+            # Filter
+            if filter_column and filter_value is not None:
+                # Case-insensitive partial match
+                filtered = []
+                for item in processed_data:
+                    val = str(item.get(filter_column, ""))
+                    if filter_value.lower() in val.lower():
+                        filtered.append(item)
+                processed_data = filtered
+            
+            # Pagination
+            total_count = len(processed_data)
+            offset = (page - 1) * page_size
+            end = offset + page_size
+            page_data = processed_data[offset:end]
+            
+            return {
+                "data": page_data,
+                "page": page,
+                "page_size": page_size,
+                "total_count": total_count,
+                "total_pages": (total_count + page_size - 1) // page_size if page_size > 0 else 1
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error reading dump file: {str(e)}")
+
+    # Regular SQLite Tables
+    conn = storage.storage.get_db_connection()
+    cursor = conn.cursor()
+    
+    # Safety check: ensure table exists to prevent injection via table_name
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
+    if not cursor.fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Table not found")
+        
+    # Prepare filter
+    where_clause = ""
+    filter_params = []
+    
+    if filter_column and filter_value is not None:
+        # Validate column name to prevent injection
+        cursor.execute(f"PRAGMA table_info({table_name})")
+        columns = [info[1] for info in cursor.fetchall()]
+        if filter_column not in columns:
+            conn.close()
+            raise HTTPException(status_code=400, detail=f"Column '{filter_column}' not found")
+            
+        where_clause = f"WHERE {filter_column} LIKE ?"
+        filter_params = [f"%{filter_value}%"]
+
+    # Get Data
+    offset = (page - 1) * page_size
+    query = f"SELECT * FROM {table_name} {where_clause} LIMIT ? OFFSET ?"
+    params = filter_params + [page_size, offset]
+    
+    cursor.execute(query, tuple(params))
+    rows = [dict(row) for row in cursor.fetchall()]
+    
+    # Get Count
+    count_query = f"SELECT COUNT(*) FROM {table_name} {where_clause}"
+    cursor.execute(count_query, tuple(filter_params))
+    total_count = cursor.fetchone()[0]
+    
+    conn.close()
+    return {
+        "data": rows,
+        "page": page,
+        "page_size": page_size,
+        "total_count": total_count,
+        "total_pages": (total_count + page_size - 1) // page_size if page_size > 0 else 1
+    }
+
+@app.post("/api/admin/db/sql")
+async def execute_sql_query(query: dict):
+    """Execute a raw SQL SELECT query."""
+    sql = query.get("sql", "").strip()
+    if not sql.lower().startswith("select"):
+        raise HTTPException(status_code=400, detail="Only SELECT queries are allowed")
+        
+    conn = storage.storage.get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(sql)
+        rows = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        return {"data": rows, "count": len(rows)}
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 if __name__ == "__main__":

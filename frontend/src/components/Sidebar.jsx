@@ -9,13 +9,13 @@ export default function Sidebar({
   onNewConversation,
   onArchiveConversation,
   onDeleteConversation,
+  onRestartConversation,
   onOpenSettings,
   versionInfo,
   councilConfig,
   modelsMetadata,
 }) {
   const [showCouncilStatus, setShowCouncilStatus] = useState(true);
-  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
 
   const formatPrice = (price) => {
     if (!price || price === 0) return 'Free';
@@ -28,17 +28,9 @@ export default function Sidebar({
 
   const handleDeleteClick = (e, id) => {
     e.stopPropagation();
-    setDeleteConfirmId(id);
-  };
-
-  const confirmArchive = async () => {
-    await onArchiveConversation(deleteConfirmId);
-    setDeleteConfirmId(null);
-  };
-
-  const confirmDelete = async () => {
-    await onDeleteConversation(deleteConfirmId);
-    setDeleteConfirmId(null);
+    e.preventDefault(); 
+    console.log("Delete requested for:", id); 
+    onDeleteConversation(id); // Now calls onRequestDelete from App
   };
 
   const handleCopyPrompt = (e, conversation) => {
@@ -69,6 +61,11 @@ export default function Sidebar({
     onSelectConversation(id, index);
   };
 
+  const handleRestartClick = (e, id) => {
+    e.stopPropagation();
+    onRestartConversation(id);
+  };
+
   return (
     <div className="sidebar">
       <div className="sidebar-header">
@@ -82,26 +79,6 @@ export default function Sidebar({
           </button>
         </div>
       </div>
-
-      {deleteConfirmId && (
-        <div className="delete-modal-overlay" onClick={() => setDeleteConfirmId(null)}>
-          <div className="delete-modal" onClick={e => e.stopPropagation()}>
-            <h3>Lösch-Optionen</h3>
-            <p>Was möchten Sie mit dieser Konversation tun?</p>
-            <div className="delete-modal-buttons">
-              <button className="archive-btn" onClick={confirmArchive}>
-                📦 Ins Archiv verschieben (inkl. Logs)
-              </button>
-              <button className="permanent-delete-btn" onClick={confirmDelete}>
-                🗑️ Endgültig löschen (inkl. Logs)
-              </button>
-              <button className="cancel-btn" onClick={() => setDeleteConfirmId(null)}>
-                Abbrechen
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <div className="conversation-list">
         {conversations.length === 0 ? (
@@ -126,6 +103,13 @@ export default function Sidebar({
                     title="Change rating"
                   >
                     ⭐
+                  </button>
+                  <button
+                    className="icon-btn restart-btn"
+                    onClick={(e) => handleRestartClick(e, conv.id)}
+                    title="Restart conversation"
+                  >
+                    🔄
                   </button>
                   <button
                     className="icon-btn delete-btn"

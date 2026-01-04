@@ -54,13 +54,20 @@ Your output must be a JSON object. Do not include any introductory or concluding
 
     from .storage import storage
     
+    # Prepend custom personality if defined
+    personalities = current_config.get("model_personalities", {})
+    if chairman_model in personalities and personalities[chairman_model]:
+        system_prompt = personalities[chairman_model] + "\n\n" + system_prompt
+
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_query}
     ]
 
     import json
-    response = await query_model(chairman_model, messages, timeout=float(timeout))
+    # Get specific key for the chairman model
+    api_key = storage.get_key_for_model(chairman_model)
+    response = await query_model(chairman_model, messages, timeout=float(timeout), api_key=api_key)
     
     # Audit log for planning
     if conversation_id:
@@ -160,14 +167,21 @@ async def query_with_substitute(model: str, messages: List[Dict[str, Any]], time
     if log_callback:
         log_callback(f"Waiting for response from: {model.split('/')[-1]}...")
         
-    res = await query_model(model, messages, timeout=timeout)
+    from .storage import storage
+    
+    # Get specific key for the primary model
+    api_key = storage.get_key_for_model(model)
+    res = await query_model(model, messages, timeout=timeout, api_key=api_key)
     
     if res is None and substitutes and model in substitutes:
         sub = substitutes[model]
         if sub and sub != model:
             if log_callback:
                 log_callback(f"⚠️ Model {model.split('/')[-1]} failed. Switching to substitute {sub.split('/')[-1]}...")
-            res = await query_model(sub, messages, timeout=timeout)
+            
+            # Get specific key for the substitute model
+            sub_api_key = storage.get_key_for_model(sub)
+            res = await query_model(sub, messages, timeout=timeout, api_key=sub_api_key)
             if res:
                 res["is_substitute"] = True
                 res["original_model"] = model
@@ -430,6 +444,11 @@ Your output must be a JSON object:
     if human_feedback:
         system_prompt += f"\n\nCONTEXT FROM HUMAN CHAIR:\n{human_feedback}"
 
+    # Prepend custom personality if defined
+    personalities = current_config.get("model_personalities", {})
+    if chairman_model in personalities and personalities[chairman_model]:
+        system_prompt = personalities[chairman_model] + "\n\n" + system_prompt
+
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": context}
@@ -601,7 +620,9 @@ Title:"""
         # ToBeDeleted_end
         return "Unbenannte Mission"
     
-    response = await query_model(title_model, messages, timeout=30.0)
+    from .storage import storage
+    api_key = storage.get_key_for_model(title_model)
+    response = await query_model(title_model, messages, timeout=30.0, api_key=api_key)
 
     if response is None:
         # ToBeDeleted_start

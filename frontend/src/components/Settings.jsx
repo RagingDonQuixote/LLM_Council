@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../api';
+import SearchableSelect from './SearchableSelect';
 import './Settings.css';
+import './UnifiedModelSelection.css';
 
 function PromptManager({ prompts, onSave, onDelete }) {
   const [editingPrompt, setEditingPrompt] = useState(null);
@@ -159,6 +161,14 @@ function Settings({ onClose, versionInfo }) {
   const [templates, setTemplates] = useState([]);
   const [boards, setBoards] = useState([]);
   const [prompts, setPrompts] = useState([]);
+  
+  // Unified model system state
+  const [baseModels, setBaseModels] = useState([]);
+  const [selectedBaseModel, setSelectedBaseModel] = useState(null);
+  const [modelVariants, setModelVariants] = useState([]);
+  const [selectedVariant, setSelectedVariant] = useState(null);
+  const [unifiedModelsLoading, setUnifiedModelsLoading] = useState(false);
+  const [isTestingLiveLatency, setIsTestingLiveLatency] = useState(false);
   const [currentBoardId, setCurrentBoardId] = useState(null);
   const [boardDescription, setBoardDescription] = useState('');
   const [loading, setLoading] = useState(true);
@@ -174,6 +184,19 @@ function Settings({ onClose, versionInfo }) {
   });
   const [activeTab, setActiveTab] = useState('board');
   const [tileModes, setTileModes] = useState({}); // 'main' or 'sub' per tile index
+  const [chairmanMode, setChairmanMode] = useState('main');
+
+  // API Key Management State
+  const [apiKeys, setApiKeys] = useState([]);
+  const [newKey, setNewKey] = useState({
+    provider: 'openrouter',
+    key_value: '',
+    description: '',
+    limit_amount: '',
+    limit_reset: ''
+  });
+  const [isAddingKey, setIsAddingKey] = useState(false);
+  const [checkingKey, setCheckingKey] = useState(null);
 
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
@@ -254,13 +277,14 @@ function Settings({ onClose, versionInfo }) {
 
   const loadData = async () => {
     try {
-      const [configData, modelsData, templatesData, boardsData, promptsData, failListsData] = await Promise.all([
+      const [configData, modelsData, templatesData, boardsData, promptsData, failListsData, apiKeysData] = await Promise.all([
         api.getConfig(),
         api.getAvailableModels(),
         api.listTemplates(),
         api.listBoards(),
         api.listPrompts(),
-        api.getFailLists()
+        api.getFailLists(),
+        api.listApiKeys()
       ]);
       
       setConfig(configData);
@@ -269,6 +293,7 @@ function Settings({ onClose, versionInfo }) {
       setBoards(boardsData);
       setPrompts(promptsData);
       setFailLists(failListsData);
+      setApiKeys(apiKeysData);
       
       // Create a map for quick lookup
       const metadataMap = {};
@@ -277,10 +302,123 @@ function Settings({ onClose, versionInfo }) {
       });
       setModelsMetadata(metadataMap);
       
+      // Load unified model data
+      await loadUnifiedModelData();
+      
     } catch (error) {
       console.error('Failed to load settings:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadUnifiedModelData = async () => {
+    try {
+      setUnifiedModelsLoading(true);
+      // Fetch more models to ensure we see all of them
+      const baseModelsData = await api.getBaseModels(null, 1000);
+      setBaseModels(baseModelsData);
+    } catch (error) {
+      console.error('Failed to load unified models:', error);
+      // Fallback to empty array if unified models not available
+      setBaseModels([]);
+    } finally {
+      setUnifiedModelsLoading(false);
+    }
+  };
+
+  // Handler for base model selection
+  const handleBaseModelChange = async (baseModelId) => {
+    setSelectedBaseModel(baseModelId);
+    if (baseModelId) {
+      try {
+        setUnifiedModelsLoading(true);
+        const variants = await api.getModelVariants(baseModelId);
+        
+        // Preprocess variants for better display
+        const processedVariants = variants.map(v => ({
+          ...v,
+          // Create a composite display name
+          formatted_name: `${v.access_provider_short || v.access_provider_id}: ${v.variant_name} ${v.latency_live ? `(Live: ${Math.round(v.latency_live)}ms)` : (v.latency_ms ? `(${Math.round(v.latency_ms)}ms)` : '')}`
+        }));
+        
+        setModelVariants(processedVariants);
+        // Auto-select the first variant if available
+        if (processedVariants.length > 0) {
+          setSelectedVariant(processedVariants[0].id);
+        }
+      } catch (error) {
+        console.error('Failed to load model variants:', error);
+        setModelVariants([]);
+      } finally {
+        setUnifiedModelsLoading(false);
+      }
+    } else {
+      setModelVariants([]);
+      setSelectedVariant(null);
+    }
+  };
+
+  // Handler for variant selection
+  const handleVariantChange = (variantId) => {
+    setSelectedVariant(variantId);
+  };
+
+  const handleTestLiveLatency = async () => {
+    if (!selectedVariant) return;
+    
+    setIsTestingLiveLatency(true);
+    try {
+      const result = await api.testUnifiedModelLatency(selectedVariant);
+      if (result.status === 'success') {
+        // Refresh the variant data to show updated latency
+        const variants = await api.getModelVariants(selectedBaseModel);
+        setModelVariants(variants);
+      } else {
+        alert('Live latency test failed: ' + (result.message || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Failed to test live latency:', error);
+      alert('Failed to test live latency: ' + error.message);
+    } finally {
+      setIsTestingLiveLatency(false);
+    }
+  };
+
+  const addSelectedToCouncil = () => {
+    if (!selectedVariant) return;
+    if (config.council_models.length >= 6) {
+      alert('Maximum 6 council members allowed.');
+      return;
+    }
+    setConfig(prev => ({
+      ...prev,
+      council_models: [...prev.council_models, selectedVariant]
+    }));
+  };
+
+  const setSelectedAsChairman = () => {
+    if (!selectedVariant) return;
+    setConfig(prev => ({
+      ...prev,
+      chairman_model: selectedVariant
+    }));
+  };
+
+  // Refresh unified models
+  const handleRefreshModels = async () => {
+    try {
+      setUnifiedModelsLoading(true);
+      const result = await api.refreshUnifiedModels();
+      await loadUnifiedModelData();
+      
+      const count = result.models_refreshed || 0;
+      alert(`Models refreshed successfully! ${count} models updated in database.`);
+    } catch (error) {
+      console.error('Failed to refresh models:', error);
+      alert('Failed to refresh models: ' + (error.message || 'Unknown error'));
+    } finally {
+      setUnifiedModelsLoading(false);
     }
   };
 
@@ -320,6 +458,52 @@ function Settings({ onClose, versionInfo }) {
     }
   };
 
+  // API Key Handlers
+  const handleSaveKey = async () => {
+    try {
+      await api.saveApiKey({
+        ...newKey,
+        limit_amount: newKey.limit_amount ? parseFloat(newKey.limit_amount) : null
+      });
+      setIsAddingKey(false);
+      setNewKey({ provider: 'openrouter', key_value: '', description: '', limit_amount: '', limit_reset: '' });
+      const updatedKeys = await api.listApiKeys();
+      setApiKeys(updatedKeys);
+      return true;
+    } catch (err) {
+      alert('Failed to save key');
+      return false;
+    }
+  };
+
+  const handleDeleteKey = async (id) => {
+    if (!confirm('Delete this API key?')) return;
+    try {
+      await api.deleteApiKey(id);
+      const updatedKeys = await api.listApiKeys();
+      setApiKeys(updatedKeys);
+    } catch (err) {
+      alert('Failed to delete key');
+    }
+  };
+
+  const handleCheckKey = async (id) => {
+    setCheckingKey(id);
+    try {
+      const res = await api.checkApiKey(id);
+      if (res.status === 'success') {
+        const updatedKeys = await api.listApiKeys();
+        setApiKeys(updatedKeys);
+      } else {
+        alert(`Check failed: ${res.message}`);
+      }
+    } catch (err) {
+      alert('Check failed');
+    } finally {
+      setCheckingKey(null);
+    }
+  };
+
   // Drag handlers
   const handleMouseDown = (e) => {
     // Only start dragging if clicking on header and not on interactive elements
@@ -351,6 +535,15 @@ function Settings({ onClose, versionInfo }) {
   const handleSave = async () => {
     setSaving(true);
     try {
+      // Check for unsaved API Key
+      if (activeTab === 'api-keys' && newKey.key_value) {
+          const success = await handleSaveKey();
+          if (!success) {
+              setSaving(false);
+              return; // Abort if key save failed
+          }
+      }
+
       await api.updateConfig(config);
       alert('Settings saved successfully!');
       onClose();
@@ -362,10 +555,36 @@ function Settings({ onClose, versionInfo }) {
     }
   };
 
+  const getKeyForModel = (modelId) => {
+    const meta = modelsMetadata[modelId];
+    const isFreeModel = meta?.free || (modelId && (modelId.includes(':free') || modelId.toLowerCase().includes('free')));
+    
+    let keyToUse = null;
+    
+    if (isFreeModel) {
+        keyToUse = apiKeys.find(k => 
+            k.provider === 'openrouter' && 
+            (k.label?.toLowerCase().includes('free') || k.description?.toLowerCase().includes('free') || k.description?.includes('$0'))
+        );
+        if (!keyToUse && apiKeys.length > 0) keyToUse = apiKeys[0];
+    } else {
+        const paidKeys = apiKeys.filter(k => 
+            k.provider === 'openrouter' && 
+            !(k.label?.toLowerCase().includes('free') || k.description?.toLowerCase().includes('free') || k.description?.includes('$0'))
+        );
+        keyToUse = paidKeys.find(k => k.limit_remaining > 0);
+        if (!keyToUse && paidKeys.length > 0) keyToUse = paidKeys[0];
+        if (!keyToUse && apiKeys.length > 0) keyToUse = apiKeys[0];
+    }
+    return keyToUse;
+  };
+
   const handleTestLatency = async (modelId) => {
     setTestingModel(modelId);
     try {
-      const result = await api.testLatency(modelId);
+      const keyToUse = getKeyForModel(modelId);
+      const apiKey = keyToUse ? keyToUse.key_value : null;
+      const result = await api.testLatency(modelId, apiKey);
       setLatencies(prev => ({
         ...prev,
         [modelId]: result.status === 'ok' ? `${result.latency}s` : 'Failed'
@@ -674,6 +893,34 @@ function Settings({ onClose, versionInfo }) {
     );
   };
 
+  const renderKeyInfo = (modelId) => {
+    const meta = modelsMetadata[modelId];
+    const isFreeModel = meta?.free || (modelId && (modelId.includes(':free') || modelId.toLowerCase().includes('free')));
+    
+    const keyToUse = getKeyForModel(modelId);
+
+    if (!keyToUse) return <span className="key-badge warning">No Key</span>;
+
+    const keyLabel = keyToUse.label || keyToUse.key_value.substring(0, 8) + '...';
+    const limitDisplay = keyToUse.limit_remaining !== null 
+        ? `$${keyToUse.limit_remaining.toFixed(2)}` 
+        : '∞';
+
+    return (
+        <div className="key-info-row">
+            <span className={`key-badge ${isFreeModel ? 'free' : 'paid'}`}>
+                {isFreeModel ? 'Free' : 'Paid'}
+            </span>
+            <span className="key-name" title={keyToUse.description || keyToUse.key_value}>
+                {keyLabel}
+            </span>
+            <span className={`key-limit ${keyToUse.limit_remaining < 1 ? 'low' : ''}`}>
+                Limit: {limitDisplay}
+            </span>
+        </div>
+    );
+  };
+
   if (loading) {
     return <div className="settings">Loading...</div>;
   }
@@ -712,6 +959,12 @@ function Settings({ onClose, versionInfo }) {
             onClick={() => setActiveTab('prompts')}
           >
             Prompts
+          </button>
+          <button 
+            className={`settings-tab ${activeTab === 'api-keys' ? 'active' : ''}`}
+            onClick={() => setActiveTab('api-keys')}
+          >
+            API Keys
           </button>
         </div>
 
@@ -800,6 +1053,138 @@ function Settings({ onClose, versionInfo }) {
               )}
             </section>
 
+            {/* Unified Model Selection Section */}
+            <section className="settings-section">
+              <div className="section-header-with-btn">
+                <h3>Unified Model Selection (Beta)</h3>
+                <button 
+                  onClick={handleRefreshModels} 
+                  className="refresh-models-btn"
+                  disabled={unifiedModelsLoading}
+                >
+                  {unifiedModelsLoading ? 'Refreshing...' : '🔄 Refresh Models'}
+                </button>
+              </div>
+              <p>Search and select base models and their variants across all providers.</p>
+              
+              <div className="unified-model-selection">
+                <div className="model-selection-row">
+                  <div className="model-select-group">
+                    <label>Base Model:</label>
+                    <SearchableSelect
+                      options={baseModels}
+                      value={selectedBaseModel}
+                      onChange={handleBaseModelChange}
+                      placeholder="Search base models (e.g., GPT-4, Claude, Llama)"
+                      searchFields={['base_model_name', 'developer_id', 'print_name_part1']}
+                      displayField="print_name_part1"
+                      valueField="base_model_id"
+                      className="base-model-select"
+                    />
+                  </div>
+                  
+                  <div className="model-select-group">
+                    <label>Variant & Provider:</label>
+                    <SearchableSelect
+                      options={modelVariants}
+                      value={selectedVariant}
+                      onChange={handleVariantChange}
+                      placeholder="Select access method and provider"
+                      searchFields={['formatted_name', 'print_name_1', 'print_name_part2', 'access_provider_id']}
+                      displayField="formatted_name"
+                      valueField="id"
+                      className="variant-select"
+                      disabled={!selectedBaseModel || unifiedModelsLoading}
+                    />
+                  </div>
+                </div>
+                
+                {selectedBaseModel && modelVariants.length > 0 && (
+                  <div className="selection-info">
+                    <p><strong>Selected:</strong> {baseModels.find(b => b.base_model_id === selectedBaseModel)?.print_name_part1 || 'Unknown'}</p>
+                    {selectedVariant && (() => {
+                      const variant = modelVariants.find(v => (v.id || v.base_model_id) === selectedVariant);
+                      return (
+                        <>
+                          <p><strong>Variant:</strong> {variant?.print_name_part2 || 'Unknown'}</p>
+                          <div className="latency-info-container" style={{ marginTop: '8px', fontSize: '13px', color: '#6b7280' }}>
+                            {variant?.latency_ms && (
+                              <p style={{ margin: '2px 0' }}>
+                                <strong>Provider Latency:</strong> {variant.latency_ms.toFixed(0)}ms (avg)
+                              </p>
+                            )}
+                            {variant?.latency_live && (
+                              <p style={{ margin: '2px 0', color: '#059669' }}>
+                                <strong>Live Latency:</strong> {variant.latency_live.toFixed(0)}ms 
+                                <span style={{ fontSize: '11px', color: '#9ca3af', marginLeft: '8px' }}>
+                                  ({new Date(variant.latency_live_timestamp).toLocaleString()})
+                                </span>
+                              </p>
+                            )}
+                          </div>
+                          <div className="selection-actions" style={{ marginTop: '12px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            <button 
+                              onClick={addSelectedToCouncil}
+                              className="add-to-council-btn"
+                              style={{ 
+                                backgroundColor: '#10b981', 
+                                color: 'white', 
+                                border: 'none', 
+                                padding: '6px 12px', 
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                fontSize: '13px'
+                              }}
+                            >
+                              Add to Council
+                            </button>
+                            <button 
+                              onClick={setSelectedAsChairman}
+                              className="set-as-chairman-btn"
+                              style={{ 
+                                backgroundColor: '#8b5cf6', 
+                                color: 'white', 
+                                border: 'none', 
+                                padding: '6px 12px', 
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                fontSize: '13px'
+                              }}
+                            >
+                              Set as Chairman
+                            </button>
+                            <button 
+                              onClick={handleTestLiveLatency}
+                              className="test-live-latency-btn"
+                              disabled={isTestingLiveLatency}
+                              style={{ 
+                                backgroundColor: '#f59e0b', 
+                                color: 'white', 
+                                border: 'none', 
+                                padding: '6px 12px', 
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                fontSize: '13px',
+                                opacity: isTestingLiveLatency ? 0.7 : 1
+                              }}
+                            >
+                              {isTestingLiveLatency ? 'Testing...' : '⚡ Test Live Latency'}
+                            </button>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
+                
+                {baseModels.length === 0 && !unifiedModelsLoading && (
+                  <div className="no-models-message">
+                    <p>No unified models available. Click "Refresh Models" to load from providers.</p>
+                  </div>
+                )}
+              </div>
+            </section>
+
             <section className="settings-section">
               <div className="section-header-with-btn">
                 <h3>Council Members (1-6)</h3>
@@ -883,6 +1268,11 @@ function Settings({ onClose, versionInfo }) {
                               Remove Member
                             </button>
                           </div>
+                          
+                          {/* API Key / Limit Display */}
+                          <div className="key-limit-display">
+                            {renderKeyInfo(activeModelId)}
+                          </div>
 
                           {mode === 'main' && (
                             <div className="sub-status-hint">
@@ -904,34 +1294,89 @@ function Settings({ onClose, versionInfo }) {
             <section className="settings-section">
               <h3>AI Chairman Model</h3>
               <p>Model that synthesizes the final answer.</p>
-              <div className="model-row-container">
-                <div className="model-row">
-                  <div className="model-select-group">
-                    <select
-                      value={config.chairman_model}
-                      onChange={(e) => updateChairmanModel(e.target.value)}
-                      className="model-select"
-                    >
-                      {/* Always include current model even if filtered out */}
-                      {!filteredModels.find(m => m.id === config.chairman_model) && availableModels.find(m => m.id === config.chairman_model) && (
-                        <option key={config.chairman_model} value={config.chairman_model}>
-                          {availableModels.find(m => m.id === config.chairman_model).name} (Current)
-                        </option>
-                      )}
-                      {filteredModels.map(m => (
-                        <option key={m.id} value={m.id}>{m.name}</option>
-                      ))}
-                    </select>
+              {(() => {
+                const mainModel = config.chairman_model;
+                const subModel = config.substitute_models?.[mainModel] || '';
+                const activeModelId = chairmanMode === 'main' ? mainModel : subModel;
+
+                return (
+                  <div className="member-tile">
+                    <div className="tile-mode-switch">
+                      <button 
+                        className={`mode-btn ${chairmanMode === 'main' ? 'active' : ''}`}
+                        onClick={() => setChairmanMode('main')}
+                      >
+                        Main Member
+                      </button>
+                      <button 
+                        className={`mode-btn ${chairmanMode === 'sub' ? 'active' : ''}`}
+                        onClick={() => setChairmanMode('sub')}
+                      >
+                        Substitute
+                      </button>
+                    </div>
+
+                    <div className="tile-body">
+                      <div className="tile-left">
+                        <div className="model-select-group">
+                          <select
+                            value={activeModelId}
+                            onChange={(e) => {
+                              if (chairmanMode === 'main') {
+                                updateChairmanModel(e.target.value);
+                              } else {
+                                updateSubstituteModel(mainModel, e.target.value);
+                              }
+                            }}
+                            className="model-select"
+                          >
+                            {chairmanMode === 'sub' && <option value="">None (No Substitute)</option>}
+                            {!filteredModels.find(m => m.id === activeModelId) && activeModelId && availableModels.find(m => m.id === activeModelId) && (
+                              <option key={activeModelId} value={activeModelId}>
+                                {availableModels.find(m => m.id === activeModelId).name} (Current)
+                              </option>
+                            )}
+                            {filteredModels.map(m => (
+                              <option key={m.id} value={m.id}>{m.name}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <textarea
+                          placeholder={chairmanMode === 'main' ? "Chairman personality (optional override)..." : "Substitute personality..."}
+                          value={config.model_personalities[activeModelId] || ''}
+                          onChange={(e) => updatePersonality(activeModelId, e.target.value)}
+                          className="personality-textarea"
+                        />
+                        
+                        <div className="tile-actions">
+                          <button
+                            onClick={() => handleTestLatency(activeModelId)}
+                            className="test-btn-small"
+                            disabled={testingModel !== null || !activeModelId}
+                          >
+                            {!activeModelId ? 'Test' : (testingModel === activeModelId ? '...' : (latencies[activeModelId] || 'Test'))}
+                          </button>
+                        </div>
+                        
+                        <div className="key-limit-display">
+                          {renderKeyInfo(activeModelId)}
+                        </div>
+
+                        {chairmanMode === 'main' && (
+                          <div className="sub-status-hint">
+                            Substitute: <span>{subModel ? (availableModels.find(m => m.id === subModel)?.name || subModel.split('/').pop()) : 'none'}</span>
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="tile-right">
+                        {activeModelId ? getModelPreview(activeModelId) : <div className="no-preview">No model selected</div>}
+                      </div>
+                    </div>
                   </div>
-                  <button
-                    onClick={() => handleTestLatency(config.chairman_model)}
-                    className="test-button"
-                    disabled={testingModel !== null}
-                  >
-                    {testingModel === config.chairman_model ? '...' : (latencies[config.chairman_model] || 'Test')}
-                  </button>
-                </div>
-              </div>
+                );
+              })()}
             </section>
 
             <section className="settings-section">
@@ -1063,6 +1508,106 @@ function Settings({ onClose, versionInfo }) {
             onSave={handleSavePrompt} 
             onDelete={handleDeletePrompt} 
           />
+        ) : activeTab === 'api-keys' ? (
+          <div className="api-keys-manager">
+            <div className="section-header-with-btn">
+              <h3>API Key Management</h3>
+              <button 
+                className="add-key-btn"
+                onClick={() => setIsAddingKey(!isAddingKey)}
+              >
+                {isAddingKey ? 'Cancel' : '+ Add API Key'}
+              </button>
+            </div>
+
+            {isAddingKey && (
+              <div className="add-key-form">
+                <div className="form-group">
+                  <label>Provider:</label>
+                  <select 
+                    value={newKey.provider}
+                    onChange={(e) => setNewKey({...newKey, provider: e.target.value})}
+                  >
+                    <option value="openrouter">OpenRouter</option>
+                    <option value="openai">OpenAI (Direct)</option>
+                    <option value="anthropic">Anthropic (Direct)</option>
+                    <option value="google">Google (Direct)</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Key Value:</label>
+                  <input 
+                    type="password"
+                    value={newKey.key_value}
+                    onChange={(e) => setNewKey({...newKey, key_value: e.target.value})}
+                    placeholder="sk-..."
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Label / Description:</label>
+                  <input 
+                    type="text"
+                    value={newKey.description}
+                    onChange={(e) => setNewKey({...newKey, description: e.target.value})}
+                    placeholder="e.g. My Paid Key"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Monthly Limit ($):</label>
+                  <input 
+                    type="number"
+                    value={newKey.limit_amount}
+                    onChange={(e) => setNewKey({...newKey, limit_amount: e.target.value})}
+                    placeholder="Optional limit"
+                  />
+                </div>
+                <button onClick={handleSaveKey} disabled={!newKey.key_value} className="save-key-btn">
+                  Save Key
+                </button>
+              </div>
+            )}
+
+            <div className="keys-list">
+              {apiKeys.length === 0 ? (
+                <p className="no-keys">No API keys configured.</p>
+              ) : (
+                apiKeys.map(key => (
+                  <div key={key.id} className={`key-card ${!key.is_active ? 'inactive' : ''}`}>
+                    <div className="key-header">
+                      <span className="key-provider">{key.provider}</span>
+                      <span className={`key-status ${key.is_active ? 'active' : 'inactive'}`}>
+                        {key.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+                    <div className="key-body">
+                      <h4>{key.description || key.label || 'Unnamed Key'}</h4>
+                      <div className="key-preview">
+                        {key.key_value.substring(0, 8)}...{key.key_value.substring(key.key_value.length - 4)}
+                      </div>
+                      <div className="key-stats">
+                        <div className="stat">
+                          <label>Remaining:</label>
+                          <span>{key.limit_remaining !== null ? `$${key.limit_remaining.toFixed(2)}` : '∞'}</span>
+                        </div>
+                        <div className="stat">
+                          <label>Usage:</label>
+                          <span>${(key.usage_amount || 0).toFixed(2)}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="key-actions">
+                      <button onClick={() => handleCheckKey(key.id)} disabled={checkingKey === key.id}>
+                        {checkingKey === key.id ? 'Checking...' : 'Check Balance'}
+                      </button>
+                      <button onClick={() => handleDeleteKey(key.id)} className="delete-btn">
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         ) : null}
       </div>
 

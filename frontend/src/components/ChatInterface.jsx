@@ -5,12 +5,14 @@ import Stage2 from './Stage2';
 import Stage3 from './Stage3';
 import Stage4 from './Stage4';
 import WorkArea from './WorkArea';
+import AuditViewer from './AuditViewer';
 import './ChatInterface.css';
 
 export default function ChatInterface({
   conversation,
   activeRevision,
   onSendMessage,
+  onRestartConversation,
   isLoading,
   showStage4,
   humanFeedback,
@@ -20,8 +22,15 @@ export default function ChatInterface({
   currentConfig,
   onOpenSettings,
   modelsMetadata,
-  showTerminal,
-  setShowTerminal
+  // New props for tools
+  showBlueprint,
+  setShowBlueprint,
+  showResources,
+  setShowResources,
+  showPromptDb,
+  setShowPromptDb,
+  bringToFront,
+  modalZIndices
 }) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef(null);
@@ -98,152 +107,131 @@ export default function ChatInterface({
           <div className="active-board-info">
             <span className="board-badge">Mission Control</span>
             <span className="strategy-pill">{currentConfig.consensus_strategy}</span>
-            <div className="model-icons">
-              {currentConfig.council_models?.map((m, i) => (
-                <div key={i} className="model-mini-icon" title={m}>
-                  {m.split('/').pop().substring(0, 2).toUpperCase()}
-                </div>
-              ))}
-              <div className="model-mini-icon chairman" title={`Chairman: ${currentConfig.chairman_model}`}>
-                👑
-              </div>
-            </div>
           </div>
-          <div className="header-actions">
-            <button className="edit-shortcut audit-btn" onClick={() => setShowAudit(true)} title="Mission Audit & Analysis">
-              🔍 Audit
+          <div className="context-actions">
+            <button className="audit-btn" onClick={() => setShowAudit(true)}>
+              📜 Audit Log
             </button>
           </div>
         </div>
       )}
 
-      <div className="mission-control-layout">
-        <div className="work-area-wrapper">
-          <div className="messages-container">
-            {visibleMessages.length === 0 ? (
-              <div className="stage0-container">
-                <div className="empty-state">
-                  <h2>Stage 0: Blueprinting</h2>
-                  <p>Select a prompt or define your mission.</p>
+      <div className="messages-container">
+        {visibleMessages.length === 0 ? (
+          <div className="intro-message">
+            <p>The Council is assembled. State your query.</p>
+          </div>
+        ) : (
+          visibleMessages.map((msg, index) => (
+            <div key={index} className={`message ${msg.role}`}>
+              {msg.role === 'user' || msg.role === 'human_chairman' ? (
+                <div className="user-message">
+                  <div className="message-label">{msg.role === 'human_chairman' ? 'Human Feedback' : 'You'}</div>
+                  <div className="message-content">
+                    {msg.content}
+                  </div>
                 </div>
-              </div>
-            ) : (
-              visibleMessages.map((msg, index) => (
-                <div key={index} className="message-group">
-                  {msg.role === 'user' ? (
-                    <div className="user-message">
-                      <div className="message-label">You</div>
-                      <div className="message-content">
-                        <div className="markdown-content">
-                          <ReactMarkdown>{msg.content}</ReactMarkdown>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (msg.role === 'human_chairman' || msg.role === 'human_feedback') ? (
-                    <div className="human-message">
-                      <div className="message-label">Human Chairman Feedback</div>
-                      <div className="message-content">
-                        <div className="markdown-content">
-                          <ReactMarkdown>{msg.content || msg.feedback}</ReactMarkdown>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="assistant-message">
-                      <div className="message-label">
-                        LLM Council {conversation.messages.filter(m => m.role === 'assistant').length > 1 ? `(Revision ${conversation.messages.filter((m, i) => m.role === 'assistant' && conversation.messages.indexOf(msg) >= i).length})` : ''}
-                      </div>
+              ) : (
+                <div className="assistant-message">
+                  <div className="message-label">
+                    LLM Council {conversation.messages.filter(m => m.role === 'assistant').length > 1 ? `(Revision ${conversation.messages.filter((m, i) => m.role === 'assistant' && conversation.messages.indexOf(msg) >= i).length})` : ''}
+                  </div>
 
-                      {/* Stage 1 */}
-                      {msg.loading?.stage1 && (
-                        <div className="stage-loading">
-                          <div className="spinner"></div>
-                          <span>Stage 1: Individual Responses</span>
-                        </div>
-                      )}
-                      {msg.stage1 && <Stage1 responses={msg.stage1} />}
-
-                      {/* Stage 2 */}
-                      {msg.loading?.stage2 && (
-                        <div className="stage-loading">
-                          <div className="spinner"></div>
-                          <span>Stage 2: Peer Ranking</span>
-                        </div>
-                      )}
-                      {msg.stage2 && (
-                        <Stage2
-                          rankings={msg.stage2}
-                          labelToModel={msg.metadata?.label_to_model}
-                          aggregateRankings={msg.metadata?.aggregate_rankings}
-                        />
-                      )}
-
-                      {/* Stage 3 */}
-                      {msg.loading?.stage3 && (
-                        <div className="stage-loading">
-                          <div className="spinner"></div>
-                          <span>Stage 3: Synthesis</span>
-                        </div>
-                      )}
-                      {msg.stage3 && <Stage3 finalResponse={msg.stage3} />}
-
-                      {/* Stage 4 - Human Chairman Review */}
-                      {showStage4 && index === visibleMessages.length - 1 && (
-                        <Stage4
-                          humanFeedback={humanFeedback}
-                          setHumanFeedback={setHumanFeedback}
-                          onSubmit={(continueDiscussion) => onStage4Submit(continueDiscussion)}
-                          isLoading={isLoading}
-                          onCancel={onStage4Cancel}
-                        />
-                      )}
+                  {/* Stage 1 */}
+                  {msg.loading?.stage1 && (
+                    <div className="stage-loading">
+                      <div className="spinner"></div>
+                      <span>Stage 1: Individual Responses</span>
                     </div>
                   )}
+                  {msg.stage1 && <Stage1 responses={msg.stage1} />}
+
+                  {/* Stage 2 */}
+                  {msg.loading?.stage2 && (
+                    <div className="stage-loading">
+                      <div className="spinner"></div>
+                      <span>Stage 2: Peer Ranking</span>
+                    </div>
+                  )}
+                  {msg.stage2 && (
+                    <Stage2
+                      rankings={msg.stage2}
+                      labelToModel={msg.metadata?.label_to_model}
+                      aggregateRankings={msg.metadata?.aggregate_rankings}
+                    />
+                  )}
+
+                  {/* Stage 3 */}
+                  {msg.loading?.stage3 && (
+                    <div className="stage-loading">
+                      <div className="spinner"></div>
+                      <span>Stage 3: Synthesis</span>
+                    </div>
+                  )}
+                  {msg.stage3 && <Stage3 finalResponse={msg.stage3} />}
+
+                  {/* Stage 4 - Human Chairman Review */}
+                  {showStage4 && index === visibleMessages.length - 1 && (
+                    <Stage4
+                      humanFeedback={humanFeedback}
+                      setHumanFeedback={setHumanFeedback}
+                      onSubmit={(continueDiscussion) => onStage4Submit(continueDiscussion)}
+                      isLoading={isLoading}
+                      onCancel={onStage4Cancel}
+                    />
+                  )}
                 </div>
-              ))
-            )}
+              )}
+            </div>
+          ))
+        )}
 
-            {isLoading && !showStage4 && (
-              <div className="loading-indicator">
-                <div className="spinner"></div>
-                <span>Council is deliberating...</span>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
+        {isLoading && !showStage4 && (
+          <div className="loading-indicator">
+            <div className="spinner"></div>
+            <span>Council is deliberating...</span>
           </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
 
-          <WorkArea 
-            conversation={conversation}
-            currentConfig={currentConfig}
-            modelsMetadata={modelsMetadata}
-            onPromptSelect={(content) => setInput(content)}
-            showTerminal={showTerminal}
-            setShowTerminal={setShowTerminal}
-          />
-        </div>
+      <WorkArea 
+        conversation={conversation}
+        currentConfig={currentConfig}
+        modelsMetadata={modelsMetadata}
+        onPromptSelect={(content) => setInput(content)}
+        // Pass down tool props
+        showBlueprint={showBlueprint}
+        setShowBlueprint={setShowBlueprint}
+        showResources={showResources}
+        setShowResources={setShowResources}
+        showPromptDb={showPromptDb}
+        setShowPromptDb={setShowPromptDb}
+        bringToFront={bringToFront}
+        modalZIndices={modalZIndices}
+      />
 
-        <div className="chat-input-area">
-          {(conversation.messages.length === 0 || !showStage4) && (
-            <form className="input-form" onSubmit={handleSubmit}>
-              <textarea
-                className="message-input"
-                placeholder="Message the Council..."
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                disabled={isLoading}
-                rows={3}
-              />
-              <button
-                type="submit"
-                className="send-button"
-                disabled={!input.trim() || isLoading}
-              >
-                Send
-              </button>
-            </form>
-          )}
-        </div>
+      <div className="chat-input-area">
+        {(conversation.messages.length === 0 || !showStage4) && (
+          <form className="input-form" onSubmit={handleSubmit}>
+            <textarea
+              className="message-input"
+              placeholder="Message the Council..."
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={isLoading}
+              rows={3}
+            />
+            <button
+              type="submit"
+              className="send-button"
+              disabled={!input.trim() || isLoading}
+            >
+              Send
+            </button>
+          </form>
+        )}
       </div>
 
       {showAudit && (

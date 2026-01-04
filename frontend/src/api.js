@@ -49,9 +49,16 @@ export const api = {
   /**
    * Test model latency.
    */
-  async testLatency(modelId) {
+  async testLatency(modelId, apiKey = null) {
+    const headers = {};
+    if (apiKey) {
+      headers['X-API-Key'] = apiKey;
+    }
     const response = await fetch(
-      `${API_BASE}/api/test-latency/${encodeURIComponent(modelId)}`
+      `${API_BASE}/api/test-latency/${encodeURIComponent(modelId)}`,
+      {
+        headers: headers
+      }
     );
     if (!response.ok) {
       throw new Error('Failed to test latency');
@@ -353,6 +360,75 @@ export const api = {
   },
 
   /**
+   * Reset a conversation.
+   */
+  async resetConversation(conversationId) {
+    const response = await fetch(
+      `${API_BASE}/api/conversations/${conversationId}/reset`,
+      { method: 'POST' }
+    );
+    if (!response.ok) {
+      throw new Error('Failed to reset conversation');
+    }
+    return response.json();
+  },
+
+  /**
+   * API Key Management
+   */
+  async listApiKeys() {
+    const response = await fetch(`${API_BASE}/api/keys`);
+    if (!response.ok) {
+      throw new Error('Failed to list API keys');
+    }
+    return response.json();
+  },
+
+  async saveApiKey(keyData) {
+    const response = await fetch(`${API_BASE}/api/keys`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(keyData)
+    });
+    if (!response.ok) {
+      throw new Error('Failed to save API key');
+    }
+    return response.json();
+  },
+
+  async updateApiKey(id, keyData) {
+    const response = await fetch(`${API_BASE}/api/keys/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(keyData)
+    });
+    if (!response.ok) {
+      throw new Error('Failed to update API key');
+    }
+    return response.json();
+  },
+
+  async deleteApiKey(id) {
+    const response = await fetch(`${API_BASE}/api/keys/${id}`, {
+      method: 'DELETE'
+    });
+    if (!response.ok) {
+      throw new Error('Failed to delete API key');
+    }
+    return response.json();
+  },
+
+  async checkApiKey(id) {
+    const response = await fetch(`${API_BASE}/api/keys/${id}/check`, {
+      method: 'POST'
+    });
+    if (!response.ok) {
+      throw new Error('Failed to check API key');
+    }
+    return response.json();
+  },
+
+  /**
    * Get fail lists.
    */
   async getFailLists() {
@@ -474,6 +550,130 @@ export const api = {
     });
     if (!response.ok) {
       throw new Error('Failed to end session');
+    }
+    return response.json();
+  },
+
+  // Unified Model API Methods
+  
+  /**
+   * Get base models with optional search.
+   */
+  async getBaseModels(search = null, limit = 1000) {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    if (limit) params.append('limit', limit.toString());
+    
+    const response = await fetch(`${API_BASE}/api/unified-models/base?${params}`);
+    if (!response.ok) {
+      throw new Error('Failed to get base models');
+    }
+    return response.json();
+  },
+
+  /**
+   * Get variants for a specific base model.
+   */
+  async getModelVariants(baseModelId) {
+    const response = await fetch(`${API_BASE}/api/unified-models/variants/${baseModelId}`);
+    if (!response.ok) {
+      throw new Error('Failed to get model variants');
+    }
+    return response.json();
+  },
+
+  /**
+   * Search unified models globally.
+   */
+  async searchUnifiedModels(query, limit = 20) {
+    const params = new URLSearchParams({ q: query, limit: limit.toString() });
+    const response = await fetch(`${API_BASE}/api/unified-models/search?${params}`);
+    if (!response.ok) {
+      throw new Error('Failed to search models');
+    }
+    return response.json();
+  },
+
+  /**
+   * Get ALL unified models for Inspector.
+   */
+  async getAllUnifiedModels() {
+    const response = await fetch(`${API_BASE}/api/unified-models/all`);
+    if (!response.ok) {
+      throw new Error('Failed to get all models');
+    }
+    return response.json();
+  },
+
+  /**
+   * Refresh all models from providers.
+   */
+  async refreshUnifiedModels() {
+    const response = await fetch(`${API_BASE}/api/unified-models/refresh`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to refresh models');
+    }
+    return response.json();
+  },
+
+  /**
+   * Get model statistics.
+   */
+  async getModelStatistics() {
+    const response = await fetch(`${API_BASE}/api/unified-models/statistics`);
+    if (!response.ok) {
+      throw new Error('Failed to get model statistics');
+    }
+    return response.json();
+  },
+
+  /**
+   * Update latency data for all models.
+   */
+  async updateModelLatencies() {
+    const response = await fetch(`${API_BASE}/api/unified-models/update-latencies`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to update latencies');
+    }
+    return response.json();
+  },
+
+  /**
+   * Test unified model latency (live).
+   */
+  async testUnifiedModelLatency(modelId) {
+    const response = await fetch(`${API_BASE}/api/unified-models/test-latency/${modelId}`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to test live latency');
+    }
+    return response.json();
+  },
+
+  /**
+   * DB Admin API
+   */
+  async getDbTables() {
+    const response = await fetch(`${API_BASE}/api/admin/db/tables`);
+    if (!response.ok) {
+      throw new Error('Failed to get DB tables');
+    }
+    return response.json();
+  },
+
+  async getDbTableContent(tableName, page = 1, filters = {}) {
+    let url = `${API_BASE}/api/admin/db/table/${tableName}?page=${page}`;
+    if (filters.column && filters.value) {
+        url += `&filter_column=${encodeURIComponent(filters.column)}&filter_value=${encodeURIComponent(filters.value)}`;
+    }
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error('Failed to get table content');
     }
     return response.json();
   },

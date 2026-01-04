@@ -1,3 +1,3 @@
-VERSION = "1.30"
-FILENAME = "LLM_Council_v1.30"
-PRINTNAME = "LLM Council v1.30"
+VERSION = "1.32"
+FILENAME = "LLM_Council_v1.32"
+PRINTNAME = "LLM Council v1.32"
