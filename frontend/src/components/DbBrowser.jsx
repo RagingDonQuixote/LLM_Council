@@ -400,7 +400,7 @@ const DbBrowser = ({ isOpen, onClose }) => {
         <div className="json-viewer">
           {Object.entries(singleData).map(([k, v]) => {
               // ... existing json viewer logic ...
-              if (k === 'raw_base_model_data' || k === 'raw_endpoint_data') return null; // Hide raw blobs in main list to avoid clutter
+              // if (k === 'raw_base_model_data' || k === 'raw_endpoint_data') return null; // Show all fields including raw data
               
               let displayVal = v;
               try {

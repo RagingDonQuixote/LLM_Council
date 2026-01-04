@@ -98,103 +98,81 @@
 }
 
 .cell-content {
+    display: block;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.pagination {
+.db-pagination {
   display: flex;
   justify-content: center;
   align-items: center;
+  padding: 15px 0 5px;
   gap: 15px;
-  margin-top: 10px;
-  padding: 10px 0;
 }
 
-.pagination button {
-  padding: 5px 15px;
+.db-pagination button {
+  padding: 6px 12px;
   border: 1px solid #dee2e6;
   background: white;
   border-radius: 4px;
   cursor: pointer;
+  color: #495057;
 }
 
-.pagination button:disabled {
-  background: #e9ecef;
+.db-pagination button:disabled {
+  background: #f1f3f5;
+  color: #adb5bd;
   cursor: not-allowed;
 }
 
-/* Single Record View */
-.single-record-view {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+/* Single View Styles */
+.single-view-container {
+  padding: 20px;
+  background: white;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  overflow-y: auto;
+  height: 100%;
 }
 
-.record-navigation {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 10px;
-    background: #e9ecef;
-    border-radius: 4px;
-    margin-bottom: 10px;
+.back-btn {
+  margin-bottom: 20px;
+  padding: 8px 16px;
+  background: #f1f3f5;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  color: #495057;
 }
 
-.record-navigation button {
-    padding: 6px 12px;
-    border: 1px solid #ced4da;
-    background: white;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 13px;
+.back-btn:hover {
+  background: #e9ecef;
 }
 
-.record-navigation button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+.json-viewer {
+  font-family: monospace;
+  font-size: 13px;
 }
 
-.record-details-container {
-    flex: 1;
-    overflow-y: auto;
-    background: white;
-    border: 1px solid #dee2e6;
-    border-radius: 4px;
-    padding: 20px;
+.field-row {
+  display: flex;
+  padding: 8px 0;
+  border-bottom: 1px solid #f1f3f5;
 }
 
-.record-field {
-    margin-bottom: 15px;
-    border-bottom: 1px solid #f1f3f5;
-    padding-bottom: 10px;
+.field-key {
+  font-weight: 600;
+  color: #495057;
+  min-width: 200px;
+  flex-shrink: 0;
 }
 
-.record-field:last-child {
-    border-bottom: none;
-}
-
-.field-label {
-    font-weight: 600;
-    color: #495057;
-    margin-bottom: 5px;
-    font-size: 0.85em;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.field-value {
-    font-family: 'Consolas', 'Monaco', monospace;
-    font-size: 0.95em;
-    color: #212529;
-    white-space: pre-wrap;
-    word-break: break-word;
-}
-
-.null-value {
-    color: #adb5bd;
-    font-style: italic;
+.field-val {
+  color: #212529;
+  word-break: break-all;
+  white-space: pre-wrap;
 }
 
 .db-error {
@@ -275,4 +253,94 @@
     margin: 0 10px;
     font-size: 0.9em;
     color: #495057;
+}
+
+/* Origin Trace View Styles */
+.origin-trace-view {
+    margin: 20px 0;
+    padding: 15px;
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+}
+
+.origin-trace-view h4 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: #495057;
+    border-bottom: 2px solid #dee2e6;
+    padding-bottom: 8px;
+}
+
+.trace-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9em;
+    margin-bottom: 10px;
+}
+
+.trace-table th, .trace-table td {
+    padding: 8px 12px;
+    border: 1px solid #dee2e6;
+    text-align: left;
+}
+
+.trace-table th {
+    background: #e9ecef;
+    font-weight: 600;
+}
+
+.trace-col-base {
+    background-color: #f8f9fa;
+    color: #868e96;
+}
+
+.trace-col-endpoint {
+    background-color: #f1f3f5;
+    color: #495057;
+}
+
+.trace-col-umt {
+    font-weight: bold;
+}
+
+.trace-match-endpoint {
+    background-color: #d3f9d8; /* Light green */
+    color: #2b8a3e;
+}
+
+.trace-match-base {
+    background-color: #f1f3f5; /* Light grey */
+    color: #868e96;
+}
+
+.trace-legend {
+    display: flex;
+    gap: 20px;
+    font-size: 0.85em;
+    margin-top: 5px;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+}
+
+.legend-item:before {
+    content: "";
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin-right: 5px;
+    border-radius: 2px;
+}
+
+.legend-item.match-ep:before {
+    background-color: #d3f9d8;
+    border: 1px solid #b2f2bb;
+}
+
+.legend-item.match-base:before {
+    background-color: #f1f3f5;
+    border: 1px solid #dee2e6;
 }
